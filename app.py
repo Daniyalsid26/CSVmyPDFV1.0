@@ -102,16 +102,10 @@ def extract_text(pdf_path: str) -> str:
 client = AsyncGroq()  # Reads GROQ_API_KEY from environment automatically
 
 _SYSTEM_PROMPT = (
-    "You are a financial data extraction engine. "
-    "Extract every transaction from the bank statement text provided by the user. "
-    "Different banks label columns differently — map them as follows:\n"
-    "  • paid_out  → any debit, withdrawal, payment out, DR, charge, fee column\n"
-    "  • paid_in   → any credit, deposit, payment in, CR, receipt column\n"
-    "  • balance   → running balance or closing balance column\n"
-    "  • payment_type → infer from context (e.g. direct debit, card, transfer, standing order)\n"
-    "Normalise all dates to yyyy-mm-dd. "
-    "If a field cannot be determined, set it to null. "
-    "Return only valid JSON matching the schema."
+    "Extract all transactions from the bank statement below. "
+    "Map debits/withdrawals/DR to paid_out, credits/deposits/CR to paid_in. "
+    "Dates as yyyy-mm-dd. Null for missing fields. "
+    'Return JSON: {"transactions":[{"date","payment_type","details","paid_out","paid_in","balance"}]}'
 )
 
 
@@ -126,13 +120,7 @@ async def parse_statement(raw_text: str) -> BankStatement:
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": raw_text},
         ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "bank_statement_extraction",
-                "schema": BankStatement.model_json_schema(),
-            },
-        },
+        response_format={"type": "json_object"},
         temperature=0.0,
     )
 
