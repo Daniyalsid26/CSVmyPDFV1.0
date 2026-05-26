@@ -306,6 +306,9 @@ _SYSTEM_PROMPT = (
     "A line with no date and no amounts is a continuation of the previous transaction description — "
     "append it to that transaction's details field, do NOT create a new row.\n"
     "Dates as yyyy-mm-dd. Store amounts as strings (e.g. \"12.50\"). Null for missing fields.\n"
+    "If no payment_type column exists, infer it from the description — use one of: "
+    "card payment, transfer, direct debit, standing order, cash withdrawal, salary, interest, fee. "
+    "Set to null if none apply.\n"
     'Return JSON: {"transactions":[{"date":"...","payment_type":"...","details":"...",'
     '"paid_out":"...","paid_in":"...","balance":"..."}]}'
 )
@@ -343,6 +346,27 @@ async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
 
 
 # ─── Post-processing ──────────────────────────────────────────────────────────
+
+_TYPE_RULES: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\b(direct[\s_-]?debit|d\.?d\.?)\b", re.I), "direct debit"),
+    (re.compile(r"\b(standing[\s_-]?order|s\.?o\.?)\b", re.I), "standing order"),
+    (re.compile(r"\b(bacs|chaps|faster[\s_-]?payment|f\.?p\.?s\.?|transfer|trf)\b", re.I), "transfer"),
+    (re.compile(r"\b(card|contactless|visa|mastercard|maestro|pos)\b", re.I), "card payment"),
+    (re.compile(r"\b(atm|cash[\s_-]?withdrawal|cashpoint|withdrawal)\b", re.I), "cash withdrawal"),
+    (re.compile(r"\b(salary|payroll|wages)\b", re.I), "salary"),
+    (re.compile(r"\b(interest)\b", re.I), "interest"),
+    (re.compile(r"\b(fee|charges?)\b", re.I), "fee"),
+]
+
+
+def infer_payment_type(details: Optional[str]) -> Optional[str]:
+    if not details:
+        return None
+    for pattern, label in _TYPE_RULES:
+        if pattern.search(details):
+            return label
+    return None
+
 
 def drop_empty_rows(transactions: list[Transaction]) -> list[Transaction]:
     """Drop rows where both paid_in and paid_out are None.
@@ -403,6 +427,11 @@ async def process_pdf(pdf_path: Optional[str]) -> tuple[Optional[str], str]:
 
         # Drop phantom rows (summary/total lines with no amounts)
         transactions = drop_empty_rows(transactions)
+
+        # Infer payment_type from details where not set
+        for t in transactions:
+            if t.payment_type is None:
+                t.payment_type = infer_payment_type(t.details)
 
         # Stage 4 — Write CSV
         write_csv(transactions, tmp_csv)
