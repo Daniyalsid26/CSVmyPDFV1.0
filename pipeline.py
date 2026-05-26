@@ -114,5 +114,4 @@ async def process_pdfs(
         write_csv(all_transactions, out)
         csv_paths.append(out)
 
-    return csv_paths, "
-".join(status_lines)
+    return csv_paths, "\n".join(status_lines)
