@@ -187,7 +187,13 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
         transactions = [normalize_raw(r) for r in raw_transactions]
         transactions = drop_empty_rows(transactions)
         for t in transactions:
-            if t.payment_type is None:
+            # Issue 1: normalise raw codes/full text → canonical label
+            # e.g. "DD" → "direct debit", "Direct Debit" → "direct debit"
+            normalized = infer_payment_type(t.payment_type)
+            if normalized:
+                t.payment_type = normalized
+            elif not t.payment_type:
+                # Issue 2: no payment type column — infer from details text
                 t.payment_type = infer_payment_type(t.details)
 
         n = len(transactions)
