@@ -63,6 +63,5 @@ PDF
 
 ## Limitations
 
-- Long statements (100+ transactions) may be truncated — the LLM call is a single request with no chunking.
-- Table parser assumes columns are spatially consistent across pages.
+- Long statements (100+ transactions) may be truncated.
 - OCR quality depends on scan resolution; results may vary on low-quality scans.
