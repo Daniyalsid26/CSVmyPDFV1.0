@@ -1,3 +1,13 @@
+---
+title: CSVmyPDFV1.0
+emoji: 📄
+colorFrom: gray
+colorTo: gray
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # CSV my PDF V1.0
 
 Upload bank statement PDFs (digital or scanned) and download clean, structured CSVs.
@@ -63,5 +73,5 @@ PDF
 
 ## Limitations
 
-- Long statements (100+ transactions) may be truncated.
+- Long statements (100+ transactions) may be truncated — the LLM call is a single request with no chunking.
 - OCR quality depends on scan resolution; results may vary on low-quality scans.
