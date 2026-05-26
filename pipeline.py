@@ -9,7 +9,36 @@ from typing import Optional
 
 from extraction import extract_text, redact_pii, try_extract_tables
 from llm import parse_statement_llm, parse_table_cells
-from models import Transaction, drop_empty_rows, infer_payment_type, normalize_raw
+from models import RawTransaction, Transaction, drop_empty_rows, infer_payment_type, normalize_raw
+
+
+# ─── Fast deterministic path (no LLM) ───────────────────────────────────────
+
+_DATE_LIKE = re.compile(
+    r"""\b(
+        \d{1,2}[/\-.\s]\d{1,2}[/\-.\s]\d{2,4}   # DD/MM/YYYY or variants
+        |\d{4}[/\-.]\d{2}[/\-.\d{2}]             # YYYY-MM-DD
+        |\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}      # 01 Jan 2024
+        |[A-Za-z]{3,9}\s+\d{1,2}[,\s]+\d{2,4}   # Jan 01, 2024
+    )\b""",
+    re.VERBOSE,
+)
+_AMOUNT_LIKE = re.compile(r"[\d,]+\.\d{2}")
+
+
+def _cells_are_clean(cells: list[list[str]]) -> bool:
+    """Return True if >=80% of rows have a date-like col[0] and at least one
+    amount-like value in col[3], col[4], or col[5].  When True we can skip
+    the LLM and normalise directly in Python."""
+    if not cells:
+        return False
+    passing = sum(
+        1 for row in cells
+        if len(row) >= 6
+        and _DATE_LIKE.search(row[0] or "")
+        and any(_AMOUNT_LIKE.search(row[i] or "") for i in (3, 4, 5))
+    )
+    return passing / len(cells) >= 0.8
 
 
 # ─── CSV Output ───────────────────────────────────────────────────────────────
@@ -129,8 +158,22 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
             cells = try_extract_tables(tmp_pdf)
 
             if cells is not None:
-                # Table found: pass raw cells to LLM for normalisation
-                raw_transactions = await parse_table_cells(cells)
+                if _cells_are_clean(cells):
+                    # Fast path: cells are well-structured — skip LLM entirely
+                    for cell_row in cells:
+                        cell_row[2] = redact_pii(cell_row[2])  # redact details
+                    raw_transactions = [
+                        RawTransaction(
+                            date=r[0], payment_type=r[1], details=r[2],
+                            paid_out=r[3], paid_in=r[4], balance=r[5],
+                        )
+                        for r in cells
+                    ]
+                    method = "table"
+                else:
+                    # Cells are messy — let LLM normalise them
+                    raw_transactions = await parse_table_cells(cells)
+                    method = "table"
             else:
                 # No table: fall back to OCR + full LLM extraction
                 raw_text = extract_text(tmp_pdf)
