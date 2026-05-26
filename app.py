@@ -1,22 +1,7 @@
 """app.py — Gradio UI."""
-import os
-import tempfile
-import zipfile
-
 import gradio as gr
 
 from pipeline import process_pdfs
-
-
-def _zip_all_csvs(csv_paths):
-    if not csv_paths:
-        return gr.update(visible=False)
-    tmp_zip = tempfile.mktemp(suffix=".zip", prefix="statements_")
-    with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in csv_paths:
-            if path and os.path.exists(path):
-                zf.write(path, os.path.basename(path))
-    return gr.update(value=tmp_zip, visible=True)
 
 _CSS = """
 footer { visibility: hidden; }
@@ -109,19 +94,20 @@ with gr.Blocks(
     with gr.Column(variant="panel"):
         gr.Markdown("**3. Download**")
         csv_output = gr.File(show_label=False, file_count="multiple")
-        download_all_btn = gr.Button("⬇ Download All as ZIP", variant="secondary")
-        zip_output = gr.File(show_label=False, visible=False)
+        zip_output = gr.File(
+            label="Download All as ZIP",
+            file_count="single",
+            visible=False,
+        )
+
+    async def _convert(pdf_paths, combine, is_scanned):
+        csv_paths, status, zip_path = await process_pdfs(pdf_paths, combine, is_scanned)
+        return csv_paths, status, gr.update(value=zip_path, visible=zip_path is not None)
 
     convert_btn.click(
-        fn=process_pdfs,
+        fn=_convert,
         inputs=[pdf_input, combine_checkbox, is_scanned_checkbox],
-        outputs=[csv_output, status_box],
-    )
-
-    download_all_btn.click(
-        fn=_zip_all_csvs,
-        inputs=[csv_output],
-        outputs=[zip_output],
+        outputs=[csv_output, status_box, zip_output],
     )
 
 if __name__ == "__main__":

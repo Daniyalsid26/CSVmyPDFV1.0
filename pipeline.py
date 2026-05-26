@@ -5,6 +5,7 @@ import csv
 import os
 import re
 import uuid
+import zipfile
 from typing import Optional
 
 from extraction import extract_text, redact_pii, try_extract_tables
@@ -226,17 +227,18 @@ async def process_pdfs(
     pdf_paths: Optional[list[str]],
     combine: bool,
     is_scanned: bool = False,
-) -> tuple[list[str], str]:
+) -> tuple[list[str], str, Optional[str]]:
     """Process one or more PDFs. Called directly by Gradio.
 
-    Returns (list_of_csv_paths, status_text).
+    Returns (list_of_csv_paths, status_text, zip_path_or_None).
+    zip_path is set when there are 2+ CSVs; None for a single file.
     When combine=True all transactions are merged into one CSV named after
     the single file (if one) or "combined.csv" (if many).
     When combine=False each PDF gets its own CSV named "{stem}.csv".
     If is_scanned=True, skip table parsing and use OCR+LLM for all files.
     """
     if not pdf_paths:
-        return [], "Please upload at least one PDF."
+        return [], "Please upload at least one PDF.", None
 
     run_dir = f"/tmp/csvpdf_{uuid.uuid4().hex[:8]}"
     os.makedirs(run_dir, exist_ok=True)
@@ -265,4 +267,13 @@ async def process_pdfs(
         write_csv(all_transactions, out)
         csv_paths.append(out)
 
-    return csv_paths, "\n".join(status_lines)
+    # Build ZIP when there are multiple CSVs — created server-side at
+    # conversion time so Download All requires no browser round-trip.
+    zip_path: Optional[str] = None
+    if len(csv_paths) > 1:
+        zip_path = os.path.join(run_dir, "statements.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in csv_paths:
+                zf.write(p, os.path.basename(p))
+
+    return csv_paths, "\n".join(status_lines), zip_path
