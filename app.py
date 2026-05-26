@@ -71,6 +71,10 @@ with gr.Blocks(
             label="Merge all files into one CSV",
             value=False,
         )
+        is_scanned_checkbox = gr.Checkbox(
+            label="These are scanned PDFs (use OCR extraction)",
+            value=False,
+        )
 
     with gr.Column(variant="panel"):
         gr.Markdown("**2. Convert**")
@@ -93,7 +97,7 @@ with gr.Blocks(
 
     convert_btn.click(
         fn=process_pdfs,
-        inputs=[pdf_input, combine_checkbox],
+        inputs=[pdf_input, combine_checkbox, is_scanned_checkbox],
         outputs=[csv_output, status_box],
     )
 

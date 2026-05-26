@@ -99,8 +99,11 @@ def _confidence_score(transactions: list[Transaction], method: str) -> tuple[flo
 
 # ─── Single-file processor ────────────────────────────────────────────────────
 
-async def _process_single(pdf_path: str) -> tuple[list[Transaction], str]:
+async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list[Transaction], str]:
     """Extract and normalise transactions from one PDF.
+
+    If is_scanned=True, skip table parser and go straight to OCR+LLM.
+    Otherwise, try table parser first, fall back to OCR+LLM if needed.
 
     Returns (transactions, one-line status message).
     """
@@ -111,20 +114,28 @@ async def _process_single(pdf_path: str) -> tuple[list[Transaction], str]:
         with open(pdf_path, "rb") as src, open(tmp_pdf, "wb") as dst:
             dst.write(src.read())
 
-        # Stage 1: Try deterministic table extraction
-        cells = try_extract_tables(tmp_pdf)
         raw_transactions = None
         method = "table"
 
-        if cells is not None:
-            # Table found: pass raw cells to LLM for normalisation
-            raw_transactions = await parse_table_cells(cells)
-        else:
-            # No table: fall back to OCR + full LLM extraction
+        if is_scanned:
+            # User indicates scanned: skip table parser, go straight to OCR+LLM
             raw_text = extract_text(tmp_pdf)
             clean_text = redact_pii(raw_text)
             raw_transactions = await parse_statement_llm(clean_text)
-            method = "llm"
+            method = "ocr+llm"
+        else:
+            # Try deterministic table extraction first
+            cells = try_extract_tables(tmp_pdf)
+
+            if cells is not None:
+                # Table found: pass raw cells to LLM for normalisation
+                raw_transactions = await parse_table_cells(cells)
+            else:
+                # No table: fall back to OCR + full LLM extraction
+                raw_text = extract_text(tmp_pdf)
+                clean_text = redact_pii(raw_text)
+                raw_transactions = await parse_statement_llm(clean_text)
+                method = "llm"
 
         if raw_transactions is None:
             raw_transactions = []
@@ -152,6 +163,7 @@ async def _process_single(pdf_path: str) -> tuple[list[Transaction], str]:
 async def process_pdfs(
     pdf_paths: Optional[list[str]],
     combine: bool,
+    is_scanned: bool = False,
 ) -> tuple[list[str], str]:
     """Process one or more PDFs. Called directly by Gradio.
 
@@ -159,6 +171,7 @@ async def process_pdfs(
     When combine=True all transactions are merged into one CSV named after
     the single file (if one) or "combined.csv" (if many).
     When combine=False each PDF gets its own CSV named "{stem}.csv".
+    If is_scanned=True, skip table parsing and use OCR+LLM for all files.
     """
     if not pdf_paths:
         return [], "Please upload at least one PDF."
@@ -172,7 +185,7 @@ async def process_pdfs(
 
     for pdf_path in pdf_paths:
         stem = os.path.splitext(os.path.basename(pdf_path))[0]
-        transactions, status = await _process_single(pdf_path)
+        transactions, status = await _process_single(pdf_path, is_scanned=is_scanned)
         status_lines.append(f"{stem}.pdf  —  {status}")
         all_transactions.extend(transactions)
 
