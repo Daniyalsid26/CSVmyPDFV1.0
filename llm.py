@@ -27,6 +27,20 @@ _SYSTEM_PROMPT = (
     "Dates as yyyy-mm-dd. Amounts as strings. Null for missing fields."
 )
 
+_TABLE_CELL_PROMPT = (
+    "You receive 6 columns per row: [date, payment_type, details, paid_out, paid_in, balance]\n"
+    "Your task: normalise and return as JSON.\n"
+    "Return a JSON object: {\"transactions\": [{\"date\": \"YYYY-MM-DD\", \"payment_type\": \"...\", "
+    "\"details\": \"...\", \"paid_out\": \"...\", \"paid_in\": \"...\", \"balance\": \"...\"}]}\n"
+    "Rules:\n"
+    "- Date: convert to YYYY-MM-DD. If only DD Mmm YY, infer year from document context (ask: what year is this statement from?).\n"
+    "- Amounts: strip currency symbols, CRs/DRs, whitespace. Keep numeric only, as string.\n"
+    "- Details: keep full text, strip leading/trailing whitespace.\n"
+    "- Balance: keep as-is if present, else null.\n"
+    "- Payment type: normalise to one of: direct debit, card payment, transfer, standing order, cash withdrawal, salary, interest, fee. If null in input, infer from details or return null.\n"
+    "Only return valid JSON. Output Null for any missing or empty field."
+)
+
 
 async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
     """Send text to Groq and return a list of RawTransactions."""
@@ -38,6 +52,44 @@ async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": raw_text},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.0,
+    )
+
+    data = json.loads(response.choices[0].message.content)
+    raw_list = data.get("transactions", [])
+
+    result: list[RawTransaction] = []
+    for item in raw_list:
+        try:
+            result.append(RawTransaction(**{
+                k: str(v) if v is not None else None
+                for k, v in item.items()
+                if k in RawTransaction.model_fields
+            }))
+        except Exception:
+            continue
+    return result
+
+
+async def parse_table_cells(cells: list[list[str]]) -> list[RawTransaction]:
+    """Parse pre-separated table cells from structured table extraction.
+
+    Cells format: [[date, payment_type, details, paid_out, paid_in, balance], ...]
+    Returns a list of RawTransactions with normalised values.
+    """
+    # Format cells as newline-delimited for the LLM prompt
+    cell_text = "\n".join(
+        f"[{cell[0]!r}, {cell[1]!r}, {cell[2]!r}, {cell[3]!r}, {cell[4]!r}, {cell[5]!r}]"
+        for cell in cells
+    )
+
+    response = await client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": _TABLE_CELL_PROMPT},
+            {"role": "user", "content": cell_text},
         ],
         response_format={"type": "json_object"},
         temperature=0.0,

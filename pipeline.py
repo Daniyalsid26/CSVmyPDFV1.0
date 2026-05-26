@@ -8,7 +8,7 @@ import uuid
 from typing import Optional
 
 from extraction import extract_text, redact_pii, try_extract_tables
-from llm import parse_statement_llm
+from llm import parse_statement_llm, parse_table_cells
 from models import Transaction, drop_empty_rows, infer_payment_type, normalize_raw
 
 
@@ -111,14 +111,23 @@ async def _process_single(pdf_path: str) -> tuple[list[Transaction], str]:
         with open(pdf_path, "rb") as src, open(tmp_pdf, "wb") as dst:
             dst.write(src.read())
 
-        raw_transactions = try_extract_tables(tmp_pdf)
+        # Stage 1: Try deterministic table extraction
+        cells = try_extract_tables(tmp_pdf)
+        raw_transactions = None
         method = "table"
 
-        if raw_transactions is None:
+        if cells is not None:
+            # Table found: pass raw cells to LLM for normalisation
+            raw_transactions = await parse_table_cells(cells)
+        else:
+            # No table: fall back to OCR + full LLM extraction
             raw_text = extract_text(tmp_pdf)
             clean_text = redact_pii(raw_text)
             raw_transactions = await parse_statement_llm(clean_text)
             method = "llm"
+
+        if raw_transactions is None:
+            raw_transactions = []
 
         transactions = [normalize_raw(r) for r in raw_transactions]
         transactions = drop_empty_rows(transactions)

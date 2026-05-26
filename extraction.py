@@ -8,7 +8,7 @@ from typing import Optional
 import fitz  # PyMuPDF — used only for OCR page rendering
 import pdfplumber
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 from models import RawTransaction
 
@@ -47,14 +47,20 @@ def extract_text(pdf_path: str) -> str:
             per_page.append(page.extract_text() or "")
 
     if len("".join(per_page).strip()) < 200:
-        # Whole document is scanned — re-extract every page via OCR
+        # Whole document is scanned — re-extract every page via OCR with preprocessing
         fitz_doc = fitz.open(pdf_path)
         try:
             per_page = []
             for i in range(len(fitz_doc)):
                 pix = fitz_doc[i].get_pixmap(dpi=200)
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
-                per_page.append(pytesseract.image_to_string(img))
+                # Enhance contrast and sharpness for better OCR
+                contrast_enhancer = ImageEnhance.Contrast(img)
+                img = contrast_enhancer.enhance(1.5)
+                sharpness_enhancer = ImageEnhance.Sharpness(img)
+                img = sharpness_enhancer.enhance(2.0)
+                # OCR with PSM 6 (single uniform block) for structured statements
+                per_page.append(pytesseract.image_to_string(img, config='--psm 6'))
         finally:
             fitz_doc.close()
 
@@ -135,13 +141,15 @@ def _is_date_like(value: Optional[str]) -> bool:
     )
 
 
-def try_extract_tables(pdf_path: str) -> Optional[list[RawTransaction]]:
-    """Attempt deterministic extraction from embedded PDF table structures.
+def try_extract_tables(pdf_path: str) -> Optional[list[list[str]]]:
+    """Attempt deterministic table structure detection.
 
+    Returns raw cell data (not parsed transactions) when a table is found.
+    Format: [[date, type, details, paid_out, paid_in, balance], ...]
     Returns None when no recognisable table is found, signalling the caller to
-    fall through to the LLM path.
+    fall through to the OCR → LLM path.
     """
-    transactions: list[RawTransaction] = []
+    cells: list[list[str]] = []
     found_structure = False
     last_mapping: dict[str, int] = {}  # carry forward across pages
 
@@ -177,23 +185,16 @@ def try_extract_tables(pdf_path: str) -> Optional[list[RawTransaction]]:
                         if not _is_date_like(date):
                             continue
 
-                        paid_out_raw = _cell(row, mapping.get("paid_out"))
-                        paid_in_raw = _cell(row, mapping.get("paid_in"))
-                        details = _cell(row, mapping.get("details"))
-                        balance_raw = _cell(row, mapping.get("balance"))
-                        payment_type = _cell(row, mapping.get("payment_type"))
+                        paid_out_raw = _cell(row, mapping.get("paid_out")) or ""
+                        paid_in_raw = _cell(row, mapping.get("paid_in")) or ""
+                        details = _cell(row, mapping.get("details")) or ""
+                        balance_raw = _cell(row, mapping.get("balance")) or ""
+                        payment_type = _cell(row, mapping.get("payment_type")) or ""
 
                         if not details and not _is_amount_like(paid_out_raw) and not _is_amount_like(paid_in_raw):
                             continue
 
-                        transactions.append(RawTransaction(
-                            date=date,
-                            payment_type=payment_type,
-                            details=details,
-                            paid_out=paid_out_raw if _is_amount_like(paid_out_raw) else None,
-                            paid_in=paid_in_raw if _is_amount_like(paid_in_raw) else None,
-                            balance=balance_raw if _is_amount_like(balance_raw) else None,
-                        ))
+                        cells.append([date or "", payment_type, details, paid_out_raw, paid_in_raw, balance_raw])
 
     except Exception:
         return None
@@ -201,5 +202,5 @@ def try_extract_tables(pdf_path: str) -> Optional[list[RawTransaction]]:
     if not found_structure:
         return None
 
-    has_amounts = any(t.paid_out is not None or t.paid_in is not None for t in transactions)
-    return transactions if has_amounts else None
+    has_amounts = any(row[3] or row[4] for row in cells if len(row) >= 5)
+    return cells if has_amounts else None
