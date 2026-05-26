@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import csv
+import json
+import logging
 import os
 import re
+import time
 import uuid
 import zipfile
 from typing import Optional
@@ -221,25 +224,49 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
             os.remove(tmp_pdf)
 
 
+# ─── Logging ─────────────────────────────────────────────────────────────────
+
+_logger = logging.getLogger("csvpdf")
+
+
+def _log(data: dict) -> None:
+    """Emit a single-line JSON structured log record."""
+    _logger.info(json.dumps(data))
+
+
+# ─── Preview builder ─────────────────────────────────────────────────────────
+
+def _build_preview(transactions: list[Transaction], max_rows: int = 20) -> list[list[str]]:
+    """Return the first *max_rows* transactions as a list-of-lists for gr.Dataframe."""
+    rows = []
+    for t in transactions[:max_rows]:
+        rows.append([
+            t.date or "",
+            t.payment_type or "",
+            t.details or "",
+            "" if t.paid_out is None else str(t.paid_out),
+            "" if t.paid_in is None else str(t.paid_in),
+            "" if t.balance is None else str(t.balance),
+        ])
+    return rows
+
+
 # ─── Multi-file entry point ───────────────────────────────────────────────────
 
 async def process_pdfs(
     pdf_paths: Optional[list[str]],
     combine: bool,
     is_scanned: bool = False,
-) -> tuple[list[str], str, Optional[str]]:
-    """Process one or more PDFs. Called directly by Gradio.
-
-    Returns (list_of_csv_paths, status_text, zip_path_or_None).
-    zip_path is set when there are 2+ CSVs; None for a single file.
-    When combine=True all transactions are merged into one CSV named after
-    the single file (if one) or "combined.csv" (if many).
-    When combine=False each PDF gets its own CSV named "{stem}.csv".
-    If is_scanned=True, skip table parsing and use OCR+LLM for all files.
+):
+    """Async generator — yields (csv_paths, status, zip_path_or_None, preview_rows)
+    after each file so the Gradio UI updates in real time.
+    Final yield carries complete results including ZIP path (if 2+ files).
     """
     if not pdf_paths:
-        return [], "Please upload at least one PDF.", None
+        yield [], "Please upload at least one PDF.", None, []
+        return
 
+    n = len(pdf_paths)
     run_dir = f"/tmp/csvpdf_{uuid.uuid4().hex[:8]}"
     os.makedirs(run_dir, exist_ok=True)
 
@@ -247,28 +274,37 @@ async def process_pdfs(
     status_lines: list[str] = []
     csv_paths: list[str] = []
 
-    for pdf_path in pdf_paths:
+    for i, pdf_path in enumerate(pdf_paths):
         stem = os.path.splitext(os.path.basename(pdf_path))[0]
+        # Progress ping before the slow extraction step
+        yield csv_paths, f"[{i + 1}/{n}] Processing {stem}.pdf…", None, _build_preview(all_transactions)
+
+        t0 = time.time()
         transactions, status = await _process_single(pdf_path, is_scanned=is_scanned)
-        status_lines.append(f"{stem}.pdf  —  {status}")
+        elapsed = round(time.time() - t0, 1)
+
+        status_lines.append(f"[{i + 1}/{n}] {stem}.pdf — {status}")
         all_transactions.extend(transactions)
+        _log({"file": f"{stem}.pdf", "rows": len(transactions), "elapsed_s": elapsed})
 
         if not combine:
             out = os.path.join(run_dir, f"{stem}.csv")
             write_csv(transactions, out)
             csv_paths.append(out)
 
+        # Yield updated state after each file completes
+        yield csv_paths, "\n".join(status_lines), None, _build_preview(all_transactions)
+
     if combine:
-        if len(pdf_paths) == 1:
-            name = os.path.splitext(os.path.basename(pdf_paths[0]))[0] + ".csv"
-        else:
-            name = "combined.csv"
+        name = (
+            os.path.splitext(os.path.basename(pdf_paths[0]))[0] + ".csv"
+            if len(pdf_paths) == 1
+            else "combined.csv"
+        )
         out = os.path.join(run_dir, name)
         write_csv(all_transactions, out)
         csv_paths.append(out)
 
-    # Build ZIP when there are multiple CSVs — created server-side at
-    # conversion time so Download All requires no browser round-trip.
     zip_path: Optional[str] = None
     if len(csv_paths) > 1:
         zip_path = os.path.join(run_dir, "statements.zip")
@@ -276,4 +312,4 @@ async def process_pdfs(
             for p in csv_paths:
                 zf.write(p, os.path.basename(p))
 
-    return csv_paths, "\n".join(status_lines), zip_path
+    yield csv_paths, "\n".join(status_lines), zip_path, _build_preview(all_transactions)

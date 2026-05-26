@@ -1,6 +1,7 @@
 """llm.py — Groq LLM client, system prompt, and transaction extraction."""
 from __future__ import annotations
 
+import asyncio
 import json
 
 from groq import AsyncGroq
@@ -8,6 +9,7 @@ from groq import AsyncGroq
 from models import RawTransaction
 
 client = AsyncGroq()
+_LLM_SEM = asyncio.Semaphore(3)  # max 3 concurrent Groq requests
 
 _SYSTEM_PROMPT = (
     "You are a bank statement parser. Extract ALL transaction rows from the text below.\n"
@@ -47,15 +49,16 @@ async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
     if len(raw_text) > 90_000:
         raw_text = raw_text[:90_000]
 
-    response = await client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": raw_text},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.0,
-    )
+    async with _LLM_SEM:
+        response = await client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": raw_text},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.0,
+        )
 
     data = json.loads(response.choices[0].message.content)
     raw_list = data.get("transactions", [])
@@ -95,15 +98,16 @@ async def classify_payment_types(descriptions: list[str]) -> dict[int, str]:
     numbered = "\n".join(f"{i}: {desc}" for i, desc in enumerate(descriptions))
 
     try:
-        response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": _CLASSIFY_PROMPT},
-                {"role": "user", "content": numbered},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.0,
-        )
+        async with _LLM_SEM:
+            response = await client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": _CLASSIFY_PROMPT},
+                    {"role": "user", "content": numbered},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.0,
+            )
         data = json.loads(response.choices[0].message.content)
         raw = data.get("results", {})
         return {int(k): str(v) for k, v in raw.items() if str(k).isdigit()}
@@ -121,15 +125,16 @@ async def parse_table_cells(cells: list[list[str]]) -> list[RawTransaction]:
         for cell in cells
     )
 
-    response = await client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": _TABLE_CELL_PROMPT},
-            {"role": "user", "content": cell_text},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.0,
-    )
+    async with _LLM_SEM:
+        response = await client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": _TABLE_CELL_PROMPT},
+                {"role": "user", "content": cell_text},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.0,
+        )
 
     data = json.loads(response.choices[0].message.content)
     raw_list = data.get("transactions", [])
