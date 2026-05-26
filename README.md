@@ -1,9 +1,4 @@
----
-title: CSVmyPDFV1.0
-sdk: docker
----
-
-# CSV my PDF
+# CSV my PDF V1.0
 
 Upload bank statement PDFs (digital or scanned) and download clean, structured CSVs.
 
