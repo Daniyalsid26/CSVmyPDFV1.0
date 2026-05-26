@@ -73,6 +73,42 @@ async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
     return result
 
 
+_CLASSIFY_PROMPT = (
+    "Classify each transaction description into exactly one payment type.\n"
+    "Use only these labels: card payment, transfer, direct debit, standing order, "
+    "cash withdrawal, salary, interest, fee, bill payment, subscription, insurance, other\n"
+    "Return JSON: {\"results\": {\"0\": \"bill payment\", \"1\": \"card payment\", ...}}\n"
+    "Use the integer key from the input. Never add extra keys or explanations."
+)
+
+
+async def classify_payment_types(descriptions: list[str]) -> dict[int, str]:
+    """Batch-classify a list of transaction descriptions into payment type labels.
+
+    Sends a single Groq call for all descriptions. Returns a dict mapping
+    the original list index (int) to a canonical payment type label (str).
+    Returns an empty dict on any failure so callers degrade gracefully.
+    """
+    if not descriptions:
+        return {}
+
+    numbered = "\n".join(f"{i}: {desc}" for i, desc in enumerate(descriptions))
+
+    try:
+        response = await client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": _CLASSIFY_PROMPT},
+                {"role": "user", "content": numbered},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.0,
+        )
+        data = json.loads(response.choices[0].message.content)
+        raw = data.get("results", {})
+        return {int(k): str(v) for k, v in raw.items() if str(k).isdigit()}
+    except Exception:
+        return {}
 async def parse_table_cells(cells: list[list[str]]) -> list[RawTransaction]:
     """Parse pre-separated table cells from structured table extraction.
 
