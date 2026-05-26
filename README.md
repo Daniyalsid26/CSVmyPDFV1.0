@@ -1,10 +1,6 @@
 ---
 title: CSVmyPDFV1.0
-emoji: 📄
-colorFrom: gray
-colorTo: gray
 sdk: docker
-pinned: false
 ---
 
 # CSV my PDF
