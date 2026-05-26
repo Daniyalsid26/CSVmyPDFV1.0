@@ -75,3 +75,21 @@ PDF
 
 - Long statements (100+ transactions) may be truncated — the LLM call is a single request with no chunking.
 - OCR quality depends on scan resolution; results may vary on low-quality scans.
+
+---
+
+## Confidence score
+
+After each conversion, a confidence score is shown in the status panel. It reflects how trustworthy the extracted data is based on four checks:
+
+| Check | What it tests |
+|---|---|
+| Extraction method | Was a table found directly? (more reliable than LLM parsing) |
+| Date quality | Do ≥90% of dates parse to a clean YYYY-MM-DD format? |
+| Amount quality | Do ≥90% of rows have at least one monetary value? |
+| Balance continuity | Does the balance column add up correctly row-to-row? |
+
+**Interpreting the score:**
+- **≥ 80% ✓** — output looks correct, safe to use
+- **60–79%** — minor issues detected, worth a quick spot-check
+- **< 60% ⚠** — significant issues found, manual review recommended before use
