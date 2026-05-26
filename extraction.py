@@ -53,15 +53,13 @@ def extract_text(pdf_path: str) -> str:
             per_page = []
             page_count = min(len(fitz_doc), 10)  # cap at 10 pages
             for i in range(page_count):
-                pix = fitz_doc[i].get_pixmap(dpi=150)
+                pix = fitz_doc[i].get_pixmap(dpi=100)
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
-                # Enhance contrast and sharpness for better OCR
-                contrast_enhancer = ImageEnhance.Contrast(img)
-                img = contrast_enhancer.enhance(1.5)
-                sharpness_enhancer = ImageEnhance.Sharpness(img)
-                img = sharpness_enhancer.enhance(2.0)
-                # OCR with PSM 6 (single uniform block) for structured statements
-                per_page.append(pytesseract.image_to_string(img, config='--psm 6'))
+                # Contrast enhancement only — sharpness adds processing time
+                # without measurable OCR benefit at 100 DPI
+                img = ImageEnhance.Contrast(img).enhance(1.5)
+                # --oem 1: LSTM-only engine (fastest, most accurate for modern docs)
+                per_page.append(pytesseract.image_to_string(img, config='--psm 6 --oem 1'))
         finally:
             fitz_doc.close()
 
