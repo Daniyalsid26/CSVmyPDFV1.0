@@ -267,30 +267,40 @@ def try_extract_tables(pdf_path: str) -> Optional[list[RawTransaction]]:
 
 # ─── Text Extraction + OCR Fallback ──────────────────────────────────────────
 
+_PAGE_SEP = "\n\n--- PAGE {n} ---\n\n"
+
+
 def extract_text(pdf_path: str) -> str:
-    """Extract text via pdfplumber. Falls back to Tesseract OCR for near-blank pages.
+    """Extract text via pdfplumber with page-separator markers.
 
-    PyMuPDF is used only for page rendering on scanned pages — it doesn't require
-    poppler and is already in the dependency stack.
+    Routing is document-level: if total pdfplumber text across all pages is
+    below 200 chars the whole document is re-extracted via OCR so that scanned
+    pages with minor embedded metadata (>50 chars but no transaction rows) are
+    not incorrectly skipped. PyMuPDF is used only for page rendering.
     """
-    pages: list[str] = []
-    fitz_doc = None  # lazy-open only if OCR is needed
-
+    per_page: list[str] = []
     with pdfplumber.open(pdf_path) as pdf:
-        for page_num, page in enumerate(pdf.pages):
-            text = page.extract_text() or ""
-            if len(text.strip()) < 50:
-                if fitz_doc is None:
-                    fitz_doc = fitz.open(pdf_path)
-                pix = fitz_doc[page_num].get_pixmap(dpi=200)
+        for page in pdf.pages:
+            per_page.append(page.extract_text() or "")
+
+    total_text = "".join(per_page)
+
+    if len(total_text.strip()) < 200:
+        # Whole document is scanned — re-extract every page via OCR
+        fitz_doc = fitz.open(pdf_path)
+        try:
+            per_page = []
+            for i in range(len(fitz_doc)):
+                pix = fitz_doc[i].get_pixmap(dpi=200)
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
-                text = pytesseract.image_to_string(img)
-            pages.append(text)
+                per_page.append(pytesseract.image_to_string(img))
+        finally:
+            fitz_doc.close()
 
-    if fitz_doc is not None:
-        fitz_doc.close()
-
-    return "\n".join(pages)
+    return "".join(
+        (_PAGE_SEP.format(n=i + 1) if i > 0 else "") + text
+        for i, text in enumerate(per_page)
+    )
 
 
 # ─── LLM Extraction ───────────────────────────────────────────────────────────
@@ -298,19 +308,21 @@ def extract_text(pdf_path: str) -> str:
 client = AsyncGroq()
 
 _SYSTEM_PROMPT = (
-    "Extract all transactions from the bank statement text below. "
-    "Map debits/withdrawals/DR to paid_out; credits/deposits/CR to paid_in. "
-    "Amounts with CR suffix → paid_in only. Amounts with DR suffix → paid_out only. Store the number only, no suffix.\n"
-    "If a chronological transaction list AND grouped summary sections (e.g. 'Deposits', 'Withdrawals', 'Checks Paid') "
-    "both exist, extract ONLY from the chronological list — never from the summary sections.\n"
-    "A line with no date and no amounts is a continuation of the previous transaction description — "
-    "append it to that transaction's details field, do NOT create a new row.\n"
-    "Dates as yyyy-mm-dd. Store amounts as strings (e.g. \"12.50\"). Null for missing fields.\n"
-    "If no payment_type column exists, infer it from the description — use one of: "
-    "card payment, transfer, direct debit, standing order, cash withdrawal, salary, interest, fee. "
-    "Set to null if none apply.\n"
-    'Return JSON: {"transactions":[{"date":"...","payment_type":"...","details":"...",'
-    '"paid_out":"...","paid_in":"...","balance":"..."}]}'
+    "You are a bank statement parser. Extract ALL transaction rows from the text below.\n"
+    "Return a JSON object: {\"transactions\": [{\"date\": \"2019-01-15\", \"payment_type\": \"card payment\", "
+    "\"details\": \"TESCO STORES\", \"paid_out\": \"12.50\", \"paid_in\": null, \"balance\": \"987.50\"}]}\n"
+    "CR/DR Rule: amounts with CR suffix → paid_in only; DR suffix → paid_out only. Store number only, no suffix.\n"
+    "Year Rule: many statements print only day+month per row; the year appears in the statement header or period line. "
+    "Find it and apply it to every transaction date. Never use today's year as a substitute.\n"
+    "Balance Rule: extract the running balance on each transaction row into the balance field. "
+    "Do NOT include the opening/closing balance summary lines as transaction rows.\n"
+    "Duplicate Section Rule: if a chronological list AND grouped summary sections (Deposits, Withdrawals, Checks Paid) "
+    "both exist, extract ONLY from the chronological list.\n"
+    "Continuation Line Rule: a line with no date and no amounts is part of the previous transaction — "
+    "append it to that transaction's details, do NOT create a new row.\n"
+    "Payment Type Rule: if no explicit column, infer from description using exactly these labels: "
+    "card payment, transfer, direct debit, standing order, cash withdrawal, salary, interest, fee. Null if unclear.\n"
+    "Dates as yyyy-mm-dd. Amounts as strings. Null for missing fields."
 )
 
 
