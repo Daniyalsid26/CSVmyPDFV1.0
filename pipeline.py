@@ -118,10 +118,9 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
         method = "table"
 
         if is_scanned:
-            # User indicates scanned: OCR the pages then LLM-parse the text.
-            # image_to_string() + LLM is 3-4x faster than coordinate-based
-            # image_to_data() while producing equivalent output quality.
-            raw_text = extract_text(tmp_pdf)
+            # User indicates scanned: force OCR on every page, bypassing the
+            # document-level text gate in extract_text().
+            raw_text = extract_text(tmp_pdf, force_ocr=True)
             clean_text = redact_pii(raw_text)
             raw_transactions = await parse_statement_llm(clean_text)
             method = "ocr+llm"

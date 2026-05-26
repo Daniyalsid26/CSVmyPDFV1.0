@@ -34,19 +34,21 @@ def redact_pii(text: str) -> str:
 _PAGE_SEP = "\n\n--- PAGE {n} ---\n\n"
 
 
-def extract_text(pdf_path: str) -> str:
+def extract_text(pdf_path: str, force_ocr: bool = False) -> str:
     """Extract text via pdfplumber with page-separator markers.
 
-    Routing is document-level: if total pdfplumber text is below 200 chars the
-    whole document is re-extracted via OCR, preventing scanned pages with minor
-    embedded metadata from bypassing the OCR path.
+    If force_ocr=True, skip pdfplumber entirely and OCR every page directly.
+    Otherwise routing is document-level: if total pdfplumber text is below
+    200 chars the whole document is re-extracted via OCR.
     """
     per_page: list[str] = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            per_page.append(page.extract_text() or "")
 
-    if len("".join(per_page).strip()) < 200:
+    if not force_ocr:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                per_page.append(page.extract_text() or "")
+
+    if force_ocr or len("".join(per_page).strip()) < 200:
         # Whole document is scanned — re-extract every page via OCR with preprocessing
         fitz_doc = fitz.open(pdf_path)
         try:
