@@ -155,13 +155,17 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
             # User indicates scanned: force OCR on every page, bypassing the
             # document-level text gate in extract_text().
             # asyncio.to_thread keeps the event loop free during blocking OCR.
-            raw_text = await asyncio.to_thread(extract_text, tmp_pdf, True)
+            raw_text = await asyncio.wait_for(
+                asyncio.to_thread(extract_text, tmp_pdf, True), timeout=120.0
+            )
             clean_text = redact_pii(raw_text)
             raw_transactions = await parse_statement_llm(clean_text)
             method = "ocr+llm"
         else:
             # Try deterministic table extraction first
-            cells = await asyncio.to_thread(try_extract_tables, tmp_pdf)
+            cells = await asyncio.wait_for(
+                asyncio.to_thread(try_extract_tables, tmp_pdf), timeout=120.0
+            )
 
             if cells is not None:
                 if _cells_are_clean(cells):
@@ -182,7 +186,9 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
                     method = "table"
             else:
                 # No table: fall back to OCR + full LLM extraction
-                raw_text = await asyncio.to_thread(extract_text, tmp_pdf)
+                raw_text = await asyncio.wait_for(
+                    asyncio.to_thread(extract_text, tmp_pdf), timeout=120.0
+                )
                 clean_text = redact_pii(raw_text)
                 raw_transactions = await parse_statement_llm(clean_text)
                 method = "llm"

@@ -58,6 +58,7 @@ async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
             ],
             response_format={"type": "json_object"},
             temperature=0.0,
+            timeout=120.0,
         )
 
     data = json.loads(response.choices[0].message.content)
@@ -107,6 +108,7 @@ async def classify_payment_types(descriptions: list[str]) -> dict[int, str]:
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.0,
+                timeout=120.0,
             )
         data = json.loads(response.choices[0].message.content)
         raw = data.get("results", {})
@@ -134,6 +136,7 @@ async def parse_table_cells(cells: list[list[str]]) -> list[RawTransaction]:
             ],
             response_format={"type": "json_object"},
             temperature=0.0,
+            timeout=120.0,
         )
 
     data = json.loads(response.choices[0].message.content)
