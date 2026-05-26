@@ -287,20 +287,27 @@ async def process_pdfs(
         # Progress ping before the slow extraction step
         yield csv_paths, f"[{i + 1}/{n}] Processing {stem}.pdf…", None, _build_preview(all_transactions)
 
-        t0 = time.time()
-        transactions, status = await _process_single(pdf_path, is_scanned=is_scanned)
-        elapsed = round(time.time() - t0, 1)
+        try:
+            t0 = time.time()
+            transactions, status = await _process_single(pdf_path, is_scanned=is_scanned)
+            elapsed = round(time.time() - t0, 1)
 
-        status_lines.append(f"[{i + 1}/{n}] {stem}.pdf — {status}")
-        all_transactions.extend(transactions)
-        _log({"file": f"{stem}.pdf", "rows": len(transactions), "elapsed_s": elapsed})
+            status_lines.append(f"[{i + 1}/{n}] {stem}.pdf — {status}")
+            all_transactions.extend(transactions)
+            _log({"file": f"{stem}.pdf", "rows": len(transactions), "elapsed_s": elapsed})
 
-        if not combine:
-            out = os.path.join(run_dir, f"{stem}.csv")
-            write_csv(transactions, out)
-            csv_paths.append(out)
+            if not combine:
+                out = os.path.join(run_dir, f"{stem}.csv")
+                write_csv(transactions, out)
+                csv_paths.append(out)
 
-        # Yield updated state after each file completes
+        except asyncio.CancelledError:
+            raise  # don't swallow cancellation
+        except Exception as exc:
+            status_lines.append(f"[{i + 1}/{n}] {stem}.pdf — ERROR: {exc}")
+            _log({"file": f"{stem}.pdf", "error": str(exc)})
+
+        # Yield updated state after each file completes (or errors)
         yield csv_paths, "\n".join(status_lines), None, _build_preview(all_transactions)
 
     if combine:
