@@ -51,8 +51,9 @@ def extract_text(pdf_path: str) -> str:
         fitz_doc = fitz.open(pdf_path)
         try:
             per_page = []
-            for i in range(len(fitz_doc)):
-                pix = fitz_doc[i].get_pixmap(dpi=200)
+            page_count = min(len(fitz_doc), 10)  # cap at 10 pages
+            for i in range(page_count):
+                pix = fitz_doc[i].get_pixmap(dpi=150)
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
                 # Enhance contrast and sharpness for better OCR
                 contrast_enhancer = ImageEnhance.Contrast(img)
@@ -86,8 +87,9 @@ def ocr_extract_rows(pdf_path: str) -> Optional[list[list[str]]]:
 
     try:
         fitz_doc = fitz.open(pdf_path)
-        for page_idx in range(len(fitz_doc)):
-            pix = fitz_doc[page_idx].get_pixmap(dpi=200)
+        page_count = min(len(fitz_doc), 10)  # cap at 10 pages
+        for page_idx in range(page_count):
+            pix = fitz_doc[page_idx].get_pixmap(dpi=150)
             img = Image.open(io.BytesIO(pix.tobytes("png")))
 
             # Enhance for better OCR
@@ -162,9 +164,13 @@ def ocr_extract_rows(pdf_path: str) -> Optional[list[list[str]]]:
                     " ".join(cols["balance"]),
                 ])
 
-        fitz_doc.close()
     except Exception:
         return None
+    finally:
+        try:
+            fitz_doc.close()
+        except Exception:
+            pass
 
     if not rows:
         return None
