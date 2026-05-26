@@ -31,52 +31,88 @@ def write_csv(transactions: list[Transaction], out_path: str) -> None:
             ])
 
 
-# ─── Main Pipeline ────────────────────────────────────────────────────────────
+# ─── Single-file processor ────────────────────────────────────────────────────
 
-async def process_pdf(pdf_path: Optional[str]) -> tuple[Optional[str], str]:
-    if pdf_path is None:
-        return None, "Please upload a PDF file."
+async def _process_single(pdf_path: str) -> tuple[list[Transaction], str]:
+    """Extract and normalise transactions from one PDF.
 
-    run_id = uuid.uuid4().hex
+    Returns (transactions, one-line status message).
+    """
+    run_id = uuid.uuid4().hex[:8]
     tmp_pdf = f"/tmp/stmt_{run_id}.pdf"
-    tmp_csv = f"/tmp/out_{run_id}.csv"
 
     try:
-        # Stage 1 — Ingest to /tmp
         with open(pdf_path, "rb") as src, open(tmp_pdf, "wb") as dst:
             dst.write(src.read())
 
-        # Stage 2 — Try deterministic table parser (pdfplumber column-aware)
         raw_transactions = try_extract_tables(tmp_pdf)
         method = "table"
 
         if raw_transactions is None:
-            # Stage 3 — LLM path: extract text, redact PII, call Groq
             raw_text = extract_text(tmp_pdf)
             clean_text = redact_pii(raw_text)
             raw_transactions = await parse_statement_llm(clean_text)
             method = "llm"
 
-        # Normalise amounts deterministically
         transactions = [normalize_raw(r) for r in raw_transactions]
-
-        # Drop phantom rows (summary/total lines with no amounts)
         transactions = drop_empty_rows(transactions)
-
-        # Infer payment_type from details where not set
         for t in transactions:
             if t.payment_type is None:
                 t.payment_type = infer_payment_type(t.details)
 
-        # Stage 4 — Write CSV
-        write_csv(transactions, tmp_csv)
-
-        count = len(transactions)
-        return tmp_csv, f"Done ({method}) — {count} transaction{'s' if count != 1 else ''} extracted."
+        n = len(transactions)
+        return transactions, f"{n} transaction{'s' if n != 1 else ''} ({method})"
 
     except Exception as exc:
-        return None, f"Error: {exc}"
+        return [], f"Error: {exc}"
 
     finally:
         if os.path.exists(tmp_pdf):
             os.remove(tmp_pdf)
+
+
+# ─── Multi-file entry point ───────────────────────────────────────────────────
+
+async def process_pdfs(
+    pdf_paths: Optional[list[str]],
+    combine: bool,
+) -> tuple[list[str], str]:
+    """Process one or more PDFs. Called directly by Gradio.
+
+    Returns (list_of_csv_paths, status_text).
+    When combine=True all transactions are merged into one CSV named after
+    the single file (if one) or "combined.csv" (if many).
+    When combine=False each PDF gets its own CSV named "{stem}.csv".
+    """
+    if not pdf_paths:
+        return [], "Please upload at least one PDF."
+
+    run_dir = f"/tmp/csvpdf_{uuid.uuid4().hex[:8]}"
+    os.makedirs(run_dir, exist_ok=True)
+
+    all_transactions: list[Transaction] = []
+    status_lines: list[str] = []
+    csv_paths: list[str] = []
+
+    for pdf_path in pdf_paths:
+        stem = os.path.splitext(os.path.basename(pdf_path))[0]
+        transactions, status = await _process_single(pdf_path)
+        status_lines.append(f"{stem}.pdf  —  {status}")
+        all_transactions.extend(transactions)
+
+        if not combine:
+            out = os.path.join(run_dir, f"{stem}.csv")
+            write_csv(transactions, out)
+            csv_paths.append(out)
+
+    if combine:
+        if len(pdf_paths) == 1:
+            name = os.path.splitext(os.path.basename(pdf_paths[0]))[0] + ".csv"
+        else:
+            name = "combined.csv"
+        out = os.path.join(run_dir, name)
+        write_csv(all_transactions, out)
+        csv_paths.append(out)
+
+    return csv_paths, "
+".join(status_lines)

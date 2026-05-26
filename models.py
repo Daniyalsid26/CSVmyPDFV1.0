@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from dateutil import parser as _dateutil_parser
+from dateutil.parser import ParserError as _ParserError
 from pydantic import BaseModel
 
 
@@ -27,6 +29,31 @@ class Transaction(BaseModel):
     paid_out: Optional[float] = None
     paid_in: Optional[float] = None
     balance: Optional[float] = None
+
+
+# ─── Date Normalisation ──────────────────────────────────────────────────────
+
+def normalize_date(raw: Optional[str]) -> Optional[str]:
+    """Parse any date string and reformat to YYYY-MM-DD for Excel compatibility."""
+    if not raw or not raw.strip():
+        return raw
+    text = raw.strip()
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', text):
+        return text  # already correct
+    # Auto-detect dayfirst (UK) vs month-first (US) for numeric dates
+    dayfirst = True
+    m = re.match(r'^(\d{1,2})[/\-\.](\d{1,2})[/\-\.]', text)
+    if m:
+        first, second = int(m.group(1)), int(m.group(2))
+        if first > 12:
+            dayfirst = True
+        elif second > 12:
+            dayfirst = False
+    try:
+        dt = _dateutil_parser.parse(text, dayfirst=dayfirst)
+        return dt.strftime('%Y-%m-%d')
+    except (_ParserError, ValueError, OverflowError):
+        return raw
 
 
 # ─── Amount Normalisation ─────────────────────────────────────────────────────
@@ -76,7 +103,7 @@ def normalize_amount(raw: Optional[str]) -> Optional[float]:
 def normalize_raw(raw: RawTransaction) -> Transaction:
     """Convert a RawTransaction to a Transaction with parsed float amounts."""
     return Transaction(
-        date=raw.date,
+        date=normalize_date(raw.date),
         payment_type=raw.payment_type,
         details=raw.details,
         paid_out=normalize_amount(raw.paid_out),
