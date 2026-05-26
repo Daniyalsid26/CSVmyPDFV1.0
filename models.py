@@ -115,6 +115,20 @@ def normalize_raw(raw: RawTransaction) -> Transaction:
 # ─── Payment Type Inference ───────────────────────────────────────────────────
 
 _TYPE_RULES: list[tuple[re.Pattern, str]] = [
+    # UK bank statement short codes — matched first with strict word boundaries
+    (re.compile(r"\bBGC\b"), "transfer"),           # Bank Giro Credit
+    (re.compile(r"\bFPI\b"), "transfer"),           # Faster Payment In
+    (re.compile(r"\bFPO\b"), "transfer"),           # Faster Payment Out
+    (re.compile(r"\bTFR\b|\bTRF\b"), "transfer"),  # Transfer
+    (re.compile(r"\bCHQ\b"), "transfer"),           # Cheque
+    (re.compile(r"\bDEB\b|\bDD\b"), "direct debit"),
+    (re.compile(r"\bSO\b"), "standing order"),
+    (re.compile(r"\bCPT\b|\bCNP\b"), "card payment"),
+    (re.compile(r"\bATM\b"), "cash withdrawal"),
+    (re.compile(r"\bSAL\b"), "salary"),
+    (re.compile(r"\bINT\b"), "interest"),
+    (re.compile(r"\bCHG\b|\bFEE\b"), "fee"),
+    # Full-text patterns
     (re.compile(r"\b(direct[\s_-]?debit|d\.?d\.?)\b", re.I), "direct debit"),
     (re.compile(r"\b(standing[\s_-]?order|s\.?o\.?)\b", re.I), "standing order"),
     (re.compile(r"\b(bacs|chaps|faster[\s_-]?payment|f\.?p\.?s\.?|transfer|trf)\b", re.I), "transfer"),

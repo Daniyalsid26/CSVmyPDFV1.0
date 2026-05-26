@@ -70,6 +70,139 @@ def extract_text(pdf_path: str) -> str:
     )
 
 
+# ─── Coordinate-Based OCR Row Extractor (for scanned PDFs) ───────────────────
+
+def ocr_extract_rows(pdf_path: str) -> Optional[list[list[str]]]:
+    """Extract rows from a scanned PDF using coordinate-aware OCR.
+
+    Uses pytesseract.image_to_data (no pandas required) to get per-word
+    positions, then groups words into rows by y-position and assigns them
+    to columns by x-position percentage of page width.
+
+    Returns [[date, code, details, paid_out, paid_in, balance], ...] or
+    None if the extraction looks empty / unreliable.
+    """
+    rows: list[list[str]] = []
+
+    try:
+        fitz_doc = fitz.open(pdf_path)
+        for page_idx in range(len(fitz_doc)):
+            pix = fitz_doc[page_idx].get_pixmap(dpi=200)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+
+            # Enhance for better OCR
+            img = ImageEnhance.Contrast(img).enhance(1.5)
+            img = ImageEnhance.Sharpness(img).enhance(2.0)
+
+            page_w = img.width
+
+            # Get per-word data as dict — no pandas needed
+            data = pytesseract.image_to_data(
+                img,
+                config="--psm 6",
+                output_type=pytesseract.Output.DICT,
+            )
+
+            # Build list of (top, left, text) for confident, non-empty words
+            words: list[tuple[int, int, str]] = []
+            for i, text in enumerate(data["text"]):
+                text = text.strip()
+                if not text:
+                    continue
+                conf = int(data["conf"][i])
+                if conf < 30:
+                    continue
+                words.append((data["top"][i], data["left"][i], text))
+
+            if not words:
+                continue
+
+            # Group words into horizontal rows (words within 10px vertical distance)
+            words.sort(key=lambda w: w[0])
+            row_groups: list[list[tuple[int, int, str]]] = []
+            current_group: list[tuple[int, int, str]] = [words[0]]
+            for word in words[1:]:
+                if abs(word[0] - current_group[0][0]) <= 10:
+                    current_group.append(word)
+                else:
+                    row_groups.append(current_group)
+                    current_group = [word]
+            row_groups.append(current_group)
+
+            # Assign words to columns by x-position percentage of page width
+            # Bands: date <15% | code 15-22% | details 22-60% |
+            #        paid_out 60-75% | paid_in 75-88% | balance 88%+
+            for group in row_groups:
+                group.sort(key=lambda w: w[1])  # sort left-to-right
+                cols: dict[str, list[str]] = {
+                    "date": [], "code": [], "details": [],
+                    "paid_out": [], "paid_in": [], "balance": [],
+                }
+                for top, left, text in group:
+                    pct = (left / page_w) * 100
+                    if pct < 15:
+                        cols["date"].append(text)
+                    elif pct < 22:
+                        cols["code"].append(text)
+                    elif pct < 60:
+                        cols["details"].append(text)
+                    elif pct < 75:
+                        cols["paid_out"].append(text)
+                    elif pct < 88:
+                        cols["paid_in"].append(text)
+                    else:
+                        cols["balance"].append(text)
+
+                rows.append([
+                    " ".join(cols["date"]),
+                    " ".join(cols["code"]),
+                    " ".join(cols["details"]),
+                    " ".join(cols["paid_out"]),
+                    " ".join(cols["paid_in"]),
+                    " ".join(cols["balance"]),
+                ])
+
+        fitz_doc.close()
+    except Exception:
+        return None
+
+    if not rows:
+        return None
+
+    # Merge continuation lines: rows with no date AND no amounts → append
+    # details text to the previous row
+    merged: list[list[str]] = []
+    for row in rows:
+        date, code, details, paid_out, paid_in, balance = row
+        is_continuation = (
+            not date.strip()
+            and not _is_amount_like(paid_out)
+            and not _is_amount_like(paid_in)
+            and details.strip()
+        )
+        if is_continuation and merged:
+            merged[-1][2] = (merged[-1][2] + " " + details).strip()
+        else:
+            merged.append(row)
+
+    # Keep only rows that look like real transactions (have a date-like value)
+    transaction_rows = [r for r in merged if _is_date_like(r[0])]
+
+    # Quality gate: if fewer than 3 date rows found, or >50% of rows have
+    # empty paid_out AND paid_in, this extraction is unreliable — return None
+    # so the caller can fall back to plain OCR+LLM.
+    if len(transaction_rows) < 3:
+        return None
+    empty_amounts = sum(
+        1 for r in transaction_rows
+        if not _is_amount_like(r[3]) and not _is_amount_like(r[4])
+    )
+    if empty_amounts / len(transaction_rows) > 0.5:
+        return None
+
+    return transaction_rows
+
+
 # ─── Deterministic Table Parser ───────────────────────────────────────────────
 # Stage 1: pdfplumber's extract_tables() reads column cells by index,
 # preserving paid_out/paid_in/balance positions exactly — no LLM guessing.
