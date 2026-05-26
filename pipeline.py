@@ -1,6 +1,7 @@
 """pipeline.py — Main pipeline orchestrator."""
 from __future__ import annotations
 
+import asyncio
 import csv
 import json
 import logging
@@ -153,13 +154,14 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
         if is_scanned:
             # User indicates scanned: force OCR on every page, bypassing the
             # document-level text gate in extract_text().
-            raw_text = extract_text(tmp_pdf, force_ocr=True)
+            # asyncio.to_thread keeps the event loop free during blocking OCR.
+            raw_text = await asyncio.to_thread(extract_text, tmp_pdf, True)
             clean_text = redact_pii(raw_text)
             raw_transactions = await parse_statement_llm(clean_text)
             method = "ocr+llm"
         else:
             # Try deterministic table extraction first
-            cells = try_extract_tables(tmp_pdf)
+            cells = await asyncio.to_thread(try_extract_tables, tmp_pdf)
 
             if cells is not None:
                 if _cells_are_clean(cells):
@@ -180,7 +182,7 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
                     method = "table"
             else:
                 # No table: fall back to OCR + full LLM extraction
-                raw_text = extract_text(tmp_pdf)
+                raw_text = await asyncio.to_thread(extract_text, tmp_pdf)
                 clean_text = redact_pii(raw_text)
                 raw_transactions = await parse_statement_llm(clean_text)
                 method = "llm"
