@@ -8,88 +8,128 @@ app_file: app.py
 pinned: false
 ---
 
-# CSV my PDF V1.0
 
-Upload bank statement PDFs (digital or scanned) and download clean, structured CSVs.
+# CSVmyPDF v1.0
 
-**Output columns:** `date` · `payment_type` · `details` · `paid_out` · `paid_in` · `balance`
-
----
-
-## How to run
-
-**Hugging Face Spaces** (deployed) — set `GROQ_API_KEY` as a Space secret, then use the UI.
-
-**Locally:**
-```bash
-git clone https://github.com/Daniyalsid26/CSVmyPDFV1.0.git
-cd CSVmyPDFV1.0
-pip install -r requirements.txt
-GROQ_API_KEY=your_key python app.py
-```
-
-**Docker:**
-```bash
-docker build -t csvmypdf .
-docker run -p 7860:7860 -e GROQ_API_KEY=your_key csvmypdf
-```
+Convert your bank statement PDFs (digital or scanned) into clean, structured CSVs with a single click.
 
 ---
 
-## Architecture
+## 🚀 Features
+- **Drag-and-drop UI** — Upload one or more PDFs, get instant CSV downloads.
+- **Two-stage extraction** — Fast deterministic table parser for digital PDFs; LLM fallback for messy or scanned statements.
+- **Automatic OCR** — Scanned PDFs are routed through Tesseract OCR for robust extraction.
+- **Privacy-first** — No data is stored server-side. All processing is in-memory and ephemeral.
+- **No vendor lock-in** — Runs locally or on Hugging Face Spaces. No proprietary formats.
+- **Transparent cost** — LLM calls (Groq) are only used when necessary, minimizing API usage and cost.
+
+---
+
+## 🏗️ Architecture
 
 ```
-PDF
+PDF(s)
  │
- ├─ Stage 1 (deterministic) — pdfplumber table extractor
- │   Detects and parses column-aligned tables directly.
- │   Skipped if no table structure is found.
+ ├─ Stage 1: Table Extraction (pdfplumber)
+ │    • Attempts to parse column-aligned tables directly from PDF.
+ │    • If successful, skips LLM entirely (fast, free, deterministic).
  │
- └─ Stage 2 (LLM fallback) — Groq llama-3.3-70b-versatile
-     Raw text is extracted (OCR via PyMuPDF + Tesseract for scanned PDFs)
-     and sent to the LLM with a structured JSON prompt.
+ └─ Stage 2: LLM Extraction (Groq Llama-3-70B)
+        • If no table found, extracts raw text (OCR if needed).
+        • Sends text to LLM with structured prompt for robust parsing.
+        • Normalizes dates, amounts, and infers payment types.
+
+Output: CSV(s) with columns: `date`, `payment_type`, `details`, `paid_out`, `paid_in`, `balance`
 ```
 
-**Modules:**
-| File | Role |
-|---|---|
-| `extraction.py` | PDF text extraction, OCR routing, PII redaction |
-| `llm.py` | Groq client, system prompt, LLM parse call |
-| `models.py` | Pydantic models, amount/date normalisation, payment type inference |
-| `pipeline.py` | Orchestrator — runs extraction, normalises output, writes CSVs |
-| `app.py` | Gradio UI |
+**Key modules:**
+| File           | Role                                                      |
+|----------------|-----------------------------------------------------------|
+| `app.py`       | Gradio UI, custom CSS, file upload/download, footer       |
+| `pipeline.py`  | Orchestrates extraction, normalization, CSV writing       |
+| `extraction.py`| PDF text/OCR extraction, PII redaction, table parsing     |
+| `llm.py`       | Groq LLM client, system/table prompts, extraction logic   |
+| `models.py`    | Pydantic models, normalization, payment type inference    |
 
 ---
 
-## Design choices
-
-- **Two-stage extraction** — table parser runs first; LLM is only used when no table structure is detected. Faster and cheaper for digital statements.
-- **Document-level OCR routing** — if total extracted text across all pages is under 200 chars, the whole document is re-processed via OCR rather than routing page-by-page.
-- **YYYY-MM-DD dates** — all date strings are normalised via `python-dateutil` so Excel opens them correctly.
-- **Payment type inference** — 8-category regex rules applied post-extraction (`DIRECT_DEBIT`, `CARD_PAYMENT`, `TRANSFER`, etc.).
-- **Named CSV output** — `Statement1.pdf` produces `Statement1.csv`; multiple files can be merged into `combined.csv` via checkbox.
+## 🔒 Privacy & Security
+- **No data retention:** Uploaded PDFs are never stored or logged.
+- **Ephemeral processing:** All files are processed in-memory and deleted after conversion.
+- **Open source:** Review the code, run locally, or deploy on your own infrastructure.
 
 ---
 
-## Limitations
-
-- Long statements (100+ transactions) may be truncated — the LLM call is a single request with no chunking.
-- OCR quality depends on scan resolution; results may vary on low-quality scans.
+## 💸 Cost & API Key
+- **LLM usage:** Only ambiguous or scanned statements are sent to Groq LLM. Digital PDFs with clean tables are processed locally (no API call).
+- **API key required:** Set the `GROQ_API_KEY` environment variable. On Hugging Face Spaces, add it as a Space secret. On your machine, export it or set inline.
+- **Minimized cost:** The pipeline is designed to avoid unnecessary LLM calls, keeping your API usage low.
 
 ---
 
-## Confidence score
+## 🛠️ Running Locally
 
-After each conversion, a confidence score is shown in the status panel. It reflects how trustworthy the extracted data is based on four checks:
+1. **Clone the repo:**
+    ```bash
+    git clone https://github.com/Daniyalsid26/CSVmyPDFV1.0.git
+    cd CSVmyPDFV1.0
+    ```
+2. **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+3. **Set your API key:**
+    ```bash
+    export GROQ_API_KEY=your_key
+    ```
+4. **Run the app:**
+    ```bash
+    python app.py
+    ```
 
-| Check | What it tests |
-|---|---|
-| Extraction method | Was a table found directly? (more reliable than LLM parsing) |
-| Date quality | Do ≥90% of dates parse to a clean YYYY-MM-DD format? |
-| Amount quality | Do ≥90% of rows have at least one monetary value? |
-| Balance continuity | Does the balance column add up correctly row-to-row? |
+**Or with Docker:**
+```bash
+    docker build -t csvmypdf .
+    docker run -p 7860:7860 -e GROQ_API_KEY=your_key csvmypdf
+```
 
-**Interpreting the score:**
-- **≥ 80% ✓** — output looks correct, safe to use
-- **60–79%** — minor issues detected, worth a quick spot-check
-- **< 60% ⚠** — significant issues found, manual review recommended before use
+---
+
+## 📝 Table Readability & UI
+- **Modern UI:** Helvetica font, light grey table with white text for clarity.
+- **Footer branding:** Discreet, with Finalto/CSVmyPDF mention.
+- **No bolt icon:** Clean "Convert to CSV" button.
+
+---
+
+## 📊 Confidence Score
+After each conversion, a confidence score is shown. It reflects extraction trustworthiness based on:
+- Extraction method (table vs LLM)
+- Date quality (≥90% parse cleanly)
+- Amount quality (≥90% rows have monetary value)
+- Balance continuity (row-to-row check)
+
+**Score meanings:**
+- **≥ 80%** — Output is reliable
+- **60–79%** — Minor issues, spot-check recommended
+- **< 60%** — Significant issues, manual review required
+
+---
+
+## ⚠️ Limitations
+- Very long statements (100+ transactions) may be truncated (single LLM call, no chunking).
+- OCR quality depends on scan resolution; low-quality scans may yield poor results.
+- LLM extraction is only as good as the prompt and model; always review outputs for critical use.
+
+---
+
+## 🤝 Contributing & License
+- PRs welcome! Please add clear comments and update the README for major changes.
+- MIT License.
+
+---
+
+## 📬 Contact
+- [Daniyal Siddiqui](mailto:daniyal.siddiqui@finalto.com)
+- [GitHub](https://github.com/Daniyalsid26/CSVmyPDFV1.0)
+- [Hugging Face Space](https://huggingface.co/spaces/DaniyalSid/CSVmyPDFV1.0)
