@@ -218,13 +218,19 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
 
         transactions = [normalize_raw(r, dayfirst=dayfirst) for r in raw_transactions]
         transactions = drop_empty_rows(transactions)
-        for t in transactions:
-            # Stage 1: normalise raw codes/full text → canonical label
-            # e.g. "DD" → "direct debit", "Direct Debit" → "direct debit"
-            if t.payment_type:
-                normalized = infer_payment_type(t.payment_type)
-                if normalized:
-                    t.payment_type = normalized
+        if method in ("llm", "ocr+llm"):
+            # Source has no explicit payment_type column on these routes.
+            # Keep payment_type blank instead of inferred labels.
+            for t in transactions:
+                t.payment_type = None
+        else:
+            for t in transactions:
+                # Stage 1: normalise raw codes/full text -> canonical label
+                # e.g. "DD" -> "direct debit", "Direct Debit" -> "direct debit"
+                if t.payment_type:
+                    normalized = infer_payment_type(t.payment_type)
+                    if normalized:
+                        t.payment_type = normalized
 
         n = len(transactions)
         _, conf_label = _confidence_score(transactions, method)
