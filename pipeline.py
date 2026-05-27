@@ -196,7 +196,25 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
         if raw_transactions is None:
             raw_transactions = []
 
-        transactions = [normalize_raw(r) for r in raw_transactions]
+
+        # --- Document-level date format detection (MM/DD vs DD/MM) ---
+        def detect_dayfirst(dates):
+            for d in dates:
+                if not d or not isinstance(d, str):
+                    continue
+                m = re.match(r'^(\d{1,2})[/-](\d{1,2})[/-]', d.strip())
+                if m:
+                    first, second = int(m.group(1)), int(m.group(2))
+                    if first > 12:
+                        return True
+                    elif second > 12:
+                        return False
+            return True  # default: DD/MM
+
+        all_dates = [r.date for r in raw_transactions if r.date]
+        dayfirst = detect_dayfirst(all_dates)
+
+        transactions = [normalize_raw(r, dayfirst=dayfirst) for r in raw_transactions]
         transactions = drop_empty_rows(transactions)
         for t in transactions:
             # Stage 1: normalise raw codes/full text → canonical label
