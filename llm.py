@@ -27,8 +27,8 @@ _SYSTEM_PROMPT = (
     "both exist, extract ONLY from the chronological list.\n"
     "Continuation Line Rule: a line with no date and no amounts is part of the previous transaction — "
     "append it to that transaction's details, do NOT create a new row.\n"
-    "Payment Type Rule: if no explicit column, infer from description using exactly these labels: "
-    "card payment, transfer, direct debit, standing order, cash withdrawal, salary, interest, fee. Null if unclear.\n"
+    "Payment Type Rule: only populate payment_type when it is explicitly present in source text/columns. "
+    "If not explicit, return null (do not infer from description).\n"
     "Dates as yyyy-mm-dd. Amounts as strings. Null for missing fields."
 )
 
@@ -42,7 +42,7 @@ _TABLE_CELL_PROMPT = (
     "- Amounts: strip currency symbols, CRs/DRs, whitespace. Keep numeric only, as string.\n"
     "- Details: keep full text, strip leading/trailing whitespace.\n"
     "- Balance: keep as-is if present, else null.\n"
-    "- Payment type: normalise to one of: direct debit, card payment, transfer, standing order, cash withdrawal, salary, interest, fee. If null in input, infer from details or return null.\n"
+    "- Payment type: normalise to one of: direct debit, card payment, transfer, standing order, cash withdrawal, salary, interest, fee. If null/empty in input, keep it null (do not infer).\n"
     "Only return valid JSON. Output Null for any missing or empty field."
 )
 
