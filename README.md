@@ -17,6 +17,7 @@ Convert your bank statement PDFs (digital or scanned) into clean, structured CSV
 
 ## Features
 - **Drag-and-drop UI** - Upload one or more PDFs, get instant CSV downloads.
+- **ZIP download button** - Download multiple CSVs together in one file.
 - **Two-stage extraction** - Fast deterministic table parser for digital PDFs; LLM fallback for messy or scanned statements.
 - **Automatic OCR** - Scanned PDFs are routed through Tesseract OCR for robust extraction.
 - **Privacy-first** - No data is stored server-side. All processing is in-memory and ephemeral.
@@ -53,20 +54,13 @@ Output: CSV(s) with columns: `date`, `payment_type`, `details`, `paid_out`, `pai
 
 ---
 
-## Assumptions and limitations of the workflow
+## Assumptions and limitations
 
-Given the time limit of the assessment, the implementation intentionally favors
-simple, reliable choices over larger, more complex abstractions. The workflow assumes
-bank statements follow broadly recognizable layouts and that the most common cases
-should be handled quickly and predictably:
+The workflow assumes common bank statement layouts and keeps the main path simple:
 
-- **Two-stage extraction instead of one heavyweight pipeline:** try deterministic table parsing first, then fall back to LLM only when needed. This keeps the common path fast and cheap.
-- **Minimal UI with clear feedback:** the Gradio app stays lightweight, with only the controls needed to complete the task and show progress and results clearly.
-- **Fail-soft error handling:** recoverable issues log warnings and fall back safely rather than stopping the whole conversion.
-- **Small, focused modules:** the code is split by responsibility (`app`, `pipeline`, `extraction`, `llm`, `models`) so it is easier to reason about and mark within time constraints.
-- **Practical validation over overengineering:** the app checks basic file validity and size before processing, which adds safety without adding unnecessary complexity.
-
-These choices make the solution easier to review, easier to maintain, and well-suited to a time-boxed assessment where correctness and clarity matter more than elaborate architecture.
+- Table parsing is tried first, with LLM fallback only when needed.
+- The app uses basic file validation and fail-soft recovery to keep processing stable.
+- Long statements may be truncated, OCR quality depends on the scan, and LLM output should still be reviewed.
 
 ---
 
@@ -112,13 +106,6 @@ These choices make the solution easier to review, easier to maintain, and well-s
 
 ---
 
-## Table Readability & UI
-- **Modern UI:** Helvetica font, light grey table with white text for clarity.
-- **Footer branding:** Discreet, with Finalto/CSVmyPDF mention.
-- **No bolt icon:** Clean "Convert to CSV" button.
-
----
-
 ## Confidence Score
 After each conversion, a confidence score is shown. It reflects extraction trustworthiness based on:
 - Extraction method (table vs LLM)
@@ -132,11 +119,6 @@ After each conversion, a confidence score is shown. It reflects extraction trust
 - **< 60%** - Significant issues, manual review required
 
 ---
-
-## Assumptions and limitations
-- Very long statements (100+ transactions) may be truncated (single LLM call, no chunking).
-- OCR quality depends on scan resolution; low-quality scans may yield poor results.
-- LLM extraction is only as good as the prompt and model; always review outputs for critical use.
 
 ---
 
