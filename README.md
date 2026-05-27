@@ -53,6 +53,21 @@ Output: CSV(s) with columns: `date`, `payment_type`, `details`, `paid_out`, `pai
 
 ---
 
+## 🧠 Pragmatic design choices for the assessment
+
+Given the time limit of the assessment, the implementation intentionally favors
+simple, reliable choices over larger, more complex abstractions:
+
+- **Two-stage extraction instead of one heavyweight pipeline:** try deterministic table parsing first, then fall back to LLM only when needed. This keeps the common path fast and cheap.
+- **Minimal UI with clear feedback:** the Gradio app stays lightweight, with only the controls needed to complete the task and show progress/results clearly.
+- **Fail-soft error handling:** recoverable issues log warnings and fall back safely rather than stopping the whole conversion.
+- **Small, focused modules:** the code is split by responsibility (`app`, `pipeline`, `extraction`, `llm`, `models`) so it is easier to reason about and mark within time constraints.
+- **Practical validation over overengineering:** the app checks basic file validity and size before processing, which adds safety without adding unnecessary complexity.
+
+These choices make the solution easier to review, easier to maintain, and well-suited to a time-boxed assessment where correctness and clarity matter more than elaborate architecture.
+
+---
+
 ## 🔒 Privacy & Security
 - **No data retention:** Uploaded PDFs are never stored or logged.
 - **Ephemeral processing:** All files are processed in-memory and deleted after conversion.
