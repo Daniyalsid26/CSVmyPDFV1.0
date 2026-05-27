@@ -131,12 +131,12 @@ _TYPE_RULES: list[tuple[re.Pattern, str]] = [
 ]
 
 
-def infer_payment_type(details: Optional[str]) -> Optional[str]:
-    """Infer a canonical payment_type from a transaction description."""
-    if not details:
+def infer_payment_type(raw_type: Optional[str]) -> Optional[str]:
+    """Normalize an existing raw payment type string into a canonical label."""
+    if not raw_type:
         return None
     for pattern, label in _TYPE_RULES:
-        if pattern.search(details):
+        if pattern.search(raw_type):
             return label
     return None
 
