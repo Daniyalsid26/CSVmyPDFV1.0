@@ -15,6 +15,37 @@ Convert your bank statement PDFs (digital or scanned) into clean, structured CSV
 
 ---
 
+## Running
+
+The Hugging Face Space is deployed and can be used as is to check that the product works.
+No API key is needed for that. The `GROQ_API_KEY` is only needed for local development or extensions.
+
+**Optional local setup:**
+
+1. **Clone the repo:**
+    ```bash
+    git clone https://github.com/Daniyalsid26/CSVmyPDFV1.0.git
+    cd CSVmyPDFV1.0
+    ```
+2. **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+3. **Set your API key for local use:**
+    ```bash
+    export GROQ_API_KEY=your_key
+    ```
+4. **Run the app:**
+    ```bash
+    python app.py
+    ```
+
+**Or with Docker:**
+```bash
+    docker build -t csvmypdf .
+    docker run -p 7860:7860 -e GROQ_API_KEY=your_key csvmypdf
+```
+
 ## Features
 - **Drag-and-drop UI** - Upload one or more PDFs, get instant CSV downloads.
 - **ZIP download button** - Download multiple CSVs together in one file.
@@ -73,36 +104,8 @@ The workflow assumes common bank statement layouts and keeps the main path simpl
 
 ## Cost & API Key
 - **LLM usage:** Only ambiguous or scanned statements are sent to Groq LLM. Digital PDFs with clean tables are processed locally (no API call).
-- **API key required:** Set the `GROQ_API_KEY` environment variable. On Hugging Face Spaces, add it as a Space secret. On your machine, export it or set inline.
 - **Minimized cost:** The pipeline is designed to avoid unnecessary LLM calls, keeping your API usage low.
-
----
-
-## Running Locally
-
-1. **Clone the repo:**
-    ```bash
-    git clone https://github.com/Daniyalsid26/CSVmyPDFV1.0.git
-    cd CSVmyPDFV1.0
-    ```
-2. **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-3. **Set your API key:**
-    ```bash
-    export GROQ_API_KEY=your_key
-    ```
-4. **Run the app:**
-    ```bash
-    python app.py
-    ```
-
-**Or with Docker:**
-```bash
-    docker build -t csvmypdf .
-    docker run -p 7860:7860 -e GROQ_API_KEY=your_key csvmypdf
-```
+- **Local development:** Use `GROQ_API_KEY` only when running locally or making extensions.
 
 ---
 
