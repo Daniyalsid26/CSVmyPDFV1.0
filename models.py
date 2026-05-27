@@ -92,10 +92,11 @@ def normalize_amount(raw: Optional[str]) -> Optional[float]:
 
 def normalize_raw(raw: RawTransaction, dayfirst: bool = True) -> Transaction:
     """Convert a RawTransaction to a Transaction, normalising date and amounts."""
+    clean_details = re.sub(r"\s+", " ", raw.details).strip() if raw.details else raw.details
     return Transaction(
         date=normalize_date(raw.date, dayfirst=dayfirst),
         payment_type=raw.payment_type,
-        details=raw.details,
+        details=clean_details,
         paid_out=normalize_amount(raw.paid_out),
         paid_in=normalize_amount(raw.paid_in),
         balance=normalize_amount(raw.balance),

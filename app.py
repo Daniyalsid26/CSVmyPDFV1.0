@@ -71,6 +71,13 @@ footer { visibility: hidden; }
     font-weight: 700 !important;
     margin-top: 6px !important;
 }
+
+#powered-by {
+    text-align: center;
+    margin-top: 14px;
+    color: #ffffff;
+    font-size: 0.9rem;
+}
 """
 _CSS = """
 footer { visibility: hidden; }
@@ -172,10 +179,6 @@ with gr.Blocks(
                 label="Merge all files into one CSV",
                 value=False,
             )
-            is_scanned_checkbox = gr.Checkbox(
-                label="My statements have been scanned (Use OCR, slower but more accurate)",
-                value=False,
-            )
 
     # ── Step 2 — Convert ─────────────────────────────────────────────────────
     with gr.Column(variant="panel"):
@@ -226,9 +229,9 @@ with gr.Blocks(
         )
 
     # ── Streaming event handler ───────────────────────────────────────────────
-    async def _convert(pdf_paths, combine, is_scanned):
+    async def _convert(pdf_paths, combine):
         async for csv_paths, status, zip_path, preview in process_pdfs(
-            pdf_paths, combine, is_scanned
+            pdf_paths, combine, False
         ):
             btn_updates = []
             for i in range(_MAX_DOWNLOADS):
@@ -250,8 +253,12 @@ with gr.Blocks(
 
     convert_btn.click(
         fn=_convert,
-        inputs=[pdf_input, combine_checkbox, is_scanned_checkbox],
+        inputs=[pdf_input, combine_checkbox],
         outputs=[status_box, preview_table, *dl_btns, zip_btn],
+    )
+
+    gr.HTML(
+        '<div id="powered-by">powered by <strong>Fin</strong>alt<span style="color:#ff4fa3;">O</span> AI</div>'
     )
 
 if __name__ == "__main__":
