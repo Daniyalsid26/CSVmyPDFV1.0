@@ -51,7 +51,7 @@ No API key is needed for that. The `GROQ_API_KEY` is only needed for local devel
 - **ZIP download button** - Download multiple CSVs together in one file.
 - **Two-stage extraction** - Fast deterministic table parser for digital PDFs; LLM fallback for messy or scanned statements.
 - **Automatic OCR** - Scanned PDFs are routed through Tesseract OCR for robust extraction.
-- **Privacy-first** - No data is stored server-side. All processing is in-memory and ephemeral.
+- **Privacy-first** - No data is stored server-side. All processing is in-memory. All customer identifying data (card numbers, bank accounts etc) are never passed to the LLM, only the raw transaction text. 
 - **No vendor lock-in** - Runs locally or on Hugging Face Spaces. No proprietary formats.
 - **Transparent cost** - LLM calls (Groq) are only used when necessary, minimizing API usage and cost.
 
