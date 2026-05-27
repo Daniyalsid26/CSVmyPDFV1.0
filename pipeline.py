@@ -16,7 +16,7 @@ import zipfile
 from typing import Optional
 
 from extraction import extract_text, redact_pii, try_extract_tables
-from llm import classify_payment_types, parse_statement_llm, parse_table_cells
+from llm import parse_statement_llm, parse_table_cells
 from models import RawTransaction, Transaction, drop_empty_rows, infer_payment_type, normalize_raw
 
 
@@ -221,24 +221,10 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
         for t in transactions:
             # Stage 1: normalise raw codes/full text → canonical label
             # e.g. "DD" → "direct debit", "Direct Debit" → "direct debit"
-            normalized = infer_payment_type(t.payment_type)
-            if normalized:
-                t.payment_type = normalized
-            elif not t.payment_type:
-                # No payment type column - infer from details text
-                t.payment_type = infer_payment_type(t.details)
-
-        # Stage 2: batch LLM fallback for anything still unclassified
-        unclassified_indices = [
-            i for i, t in enumerate(transactions) if not t.payment_type
-        ]
-        if unclassified_indices:
-            descriptions = [transactions[i].details or "" for i in unclassified_indices]
-            llm_labels = await classify_payment_types(descriptions)
-            for batch_pos, tx_idx in enumerate(unclassified_indices):
-                label = llm_labels.get(batch_pos)
-                if label:
-                    transactions[tx_idx].payment_type = label
+            if t.payment_type:
+                normalized = infer_payment_type(t.payment_type)
+                if normalized:
+                    t.payment_type = normalized
 
         n = len(transactions)
         _, conf_label = _confidence_score(transactions, method)
