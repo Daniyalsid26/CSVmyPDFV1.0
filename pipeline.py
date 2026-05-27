@@ -72,6 +72,24 @@ def write_csv(transactions: list[Transaction], out_path: str) -> None:
 # ─── Confidence Scoring ─────────────────────────────────────────────────────
 
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+_DETAIL_PAYMENT_TYPE_RE = re.compile(
+    r'^\s*(card payment|transfer|direct debit|standing order|fee|interest|salary|cash withdrawal)\s*(?:[-:–]\s*|\s+)',
+    re.I,
+)
+
+
+def _extract_payment_type_from_details(details: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Extract a payment type only when it is explicitly prefixed in details."""
+    if not details:
+        return None, details
+
+    match = _DETAIL_PAYMENT_TYPE_RE.match(details)
+    if not match:
+        return None, details
+
+    payment_type = match.group(1).strip().lower()
+    cleaned_details = details[match.end():].lstrip()
+    return payment_type, cleaned_details or details
 
 
 def _confidence_score(transactions: list[Transaction], method: str) -> tuple[float, str]:
@@ -233,14 +251,22 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
                     else:
                         t.details = pt
                 t.payment_type = None
-        else:
-            for t in transactions:
+
+        for t in transactions:
+            if t.payment_type:
                 # Stage 1: normalise raw codes/full text -> canonical label
                 # e.g. "DD" -> "direct debit", "Direct Debit" -> "direct debit"
-                if t.payment_type:
-                    normalized = infer_payment_type(t.payment_type)
-                    if normalized:
-                        t.payment_type = normalized
+                normalized = infer_payment_type(t.payment_type)
+                if normalized:
+                    t.payment_type = normalized
+                continue
+
+            # Narrow heuristic: only fill payment_type when the details start
+            # with one of the explicit labels below. No broader inference.
+            extracted_type, cleaned_details = _extract_payment_type_from_details(t.details)
+            if extracted_type:
+                t.payment_type = extracted_type
+                t.details = cleaned_details
 
         n = len(transactions)
         _, conf_label = _confidence_score(transactions, method)
