@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from groq import AsyncGroq
 
@@ -13,6 +14,7 @@ from models import RawTransaction
 
 client = AsyncGroq()
 _LLM_SEM = asyncio.Semaphore(3)  # max 3 concurrent Groq requests
+_logger = logging.getLogger("csvpdf.llm")
 
 _SYSTEM_PROMPT = (
     "You are a bank statement parser. Extract ALL transaction rows from the text below.\n"
@@ -78,7 +80,8 @@ async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
                 for k, v in item.items()
                 if k in RawTransaction.model_fields
             }))
-        except Exception:
+        except Exception as exc:
+            _logger.warning("Skipping malformed LLM row in parse_statement_llm: %s", exc)
             continue
     return result
 
@@ -120,6 +123,7 @@ async def parse_table_cells(cells: list[list[str]]) -> list[RawTransaction]:
                 for k, v in item.items()
                 if k in RawTransaction.model_fields
             }))
-        except Exception:
+        except Exception as exc:
+            _logger.warning("Skipping malformed LLM row in parse_table_cells: %s", exc)
             continue
     return result

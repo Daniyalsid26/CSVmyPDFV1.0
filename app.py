@@ -1,11 +1,38 @@
 """app.py — Gradio UI."""
 import os
+from typing import Optional
 
 import gradio as gr
 
 from pipeline import process_pdfs
 
 _MAX_DOWNLOADS = 5  # pre-created download buttons (covers up to 5 separate CSVs)
+_MAX_PDF_BYTES = 20 * 1024 * 1024  # 20 MB per file
+
+
+def _validate_pdf_paths(pdf_paths) -> Optional[str]:
+    if not pdf_paths:
+        return "Please upload at least one PDF."
+
+    for path in pdf_paths:
+        name = os.path.basename(path)
+        if not name.lower().endswith(".pdf"):
+            return f"Invalid file type: {name}. Please upload .pdf files only."
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            return f"Could not read file: {name}."
+        if size > _MAX_PDF_BYTES:
+            return f"File too large: {name}. Max size is 20 MB."
+        try:
+            with open(path, "rb") as f:
+                header = f.read(4)
+        except OSError:
+            return f"Could not open file: {name}."
+        if header != b"%PDF":
+            return f"Invalid PDF content: {name}."
+
+    return None
 
 _CSS = """
 footer { visibility: hidden; }
@@ -230,6 +257,12 @@ with gr.Blocks(
 
     # ── Streaming event handler ───────────────────────────────────────────────
     async def _convert(pdf_paths, combine):
+        validation_error = _validate_pdf_paths(pdf_paths)
+        if validation_error:
+            hidden_btns = [gr.update(visible=False) for _ in range(_MAX_DOWNLOADS)]
+            yield (validation_error, [], *hidden_btns, gr.update(visible=False))
+            return
+
         async for csv_paths, status, zip_path, preview in process_pdfs(
             pdf_paths, combine, False
         ):

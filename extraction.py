@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 from typing import Optional
 
@@ -11,6 +12,8 @@ import pytesseract
 from PIL import Image, ImageEnhance
 
 from models import RawTransaction
+
+_logger = logging.getLogger("csvpdf.extraction")
 
 
 # ─── PII Redaction ────────────────────────────────────────────────────────────
@@ -196,7 +199,8 @@ def try_extract_tables(pdf_path: str) -> Optional[list[list[str]]]:
 
                         cells.append([date or "", payment_type, details, paid_out_raw, paid_in_raw, balance_raw])
 
-    except Exception:
+    except Exception as exc:
+        _logger.warning("Table extraction failed for %s; falling back to LLM path: %s", pdf_path, exc)
         return None
 
     if not found_structure:
