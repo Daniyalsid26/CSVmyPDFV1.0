@@ -221,7 +221,16 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
         if method in ("llm", "ocr+llm"):
             # Source has no explicit payment_type column on these routes.
             # Keep payment_type blank instead of inferred labels.
+            # But preserve any type text by folding it back into details.
             for t in transactions:
+                pt = (t.payment_type or "").strip()
+                det = (t.details or "").strip()
+                if pt:
+                    if det:
+                        if not det.lower().startswith(pt.lower()):
+                            t.details = f"{pt} - {det}"
+                    else:
+                        t.details = pt
                 t.payment_type = None
         else:
             for t in transactions:
