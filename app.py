@@ -180,11 +180,7 @@ with gr.Blocks(
     # ── Step 2 — Convert ─────────────────────────────────────────────────────
     with gr.Column(variant="panel"):
         gr.Markdown("**Step 2 — Convert**")
-            convert_btn = gr.Button("Convert to CSV", variant="primary", elem_id="convert-btn")
-            "⚡ Convert to CSV",
-            variant="primary",
-            elem_id="convert-btn",
-        )
+        convert_btn = gr.Button("Convert to CSV", variant="primary", elem_id="convert-btn")
         status_box = gr.Textbox(
             show_label=False,
             placeholder="Conversion log will appear here…",
