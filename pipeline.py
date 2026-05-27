@@ -1,5 +1,5 @@
 """
-pipeline.py — Main pipeline orchestrator for PDF-to-CSV extraction.
+pipeline.py - Main pipeline orchestrator for PDF-to-CSV extraction.
 Handles routing, normalisation, and CSV writing.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ _AMOUNT_LIKE = re.compile(r"[\d,]+\.\d{2}")
 
 
 def _cells_are_clean(cells: list[list[str]]) -> bool:
-    """Check if >=80% of rows have a date and at least one amount column."
+    """Check if >=80% of rows have a date and at least one amount column."""
     if not cells:
         return False
     passing = sum(
@@ -75,35 +75,35 @@ _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 def _confidence_score(transactions: list[Transaction], method: str) -> tuple[float, str]:
-        """
-        Compute a confidence score for the extraction.
-        +0.4: table parser succeeded (no LLM)
-        +0.2: >=90% dates normalised
-        +0.2: >=90% rows have amount
-        +0.2: balance reconciles for >80% of rows
-        """
+    """
+    Compute a confidence score for the extraction.
+    +0.4: table parser succeeded (no LLM)
+    +0.2: >=90% dates normalised
+    +0.2: >=90% rows have amount
+    +0.2: balance reconciles for >80% of rows
+    """
     if not transactions:
         return 0.0, "⚠ No data"
 
     score = 0.0
 
-    # Signal 1 — extraction method
+    # Signal 1 - extraction method
     if method == "table":
         score += 0.4
 
-    # Signal 2 — date quality
+    # Signal 2 - date quality
     clean_dates = sum(1 for t in transactions if t.date and _DATE_RE.match(t.date))
     if clean_dates / len(transactions) >= 0.9:
         score += 0.2
 
-    # Signal 3 — amount quality
+    # Signal 3 - amount quality
     with_amount = sum(
         1 for t in transactions if t.paid_out is not None or t.paid_in is not None
     )
     if with_amount / len(transactions) >= 0.9:
         score += 0.2
 
-    # Signal 4 — balance reconciliation
+    # Signal 4 - balance reconciliation
     if len(transactions) >= 2:
         pairs = list(zip(transactions, transactions[1:]))
         reconciled = 0
@@ -119,14 +119,14 @@ def _confidence_score(transactions: list[Transaction], method: str) -> tuple[flo
         if checkable > 0 and reconciled / checkable >= 0.8:
             score += 0.2
         elif checkable == 0:
-            # No balance data — don't penalise, award half
+            # No balance data - don't penalise, award half
             score += 0.1
 
     pct = int(score * 100)
     if score >= 0.8:
         label = f"Confidence: {pct}% ✓"
     elif score >= 0.6:
-        label = f"Confidence: {pct}% — minor issues, spot-check advised"
+        label = f"Confidence: {pct}% - minor issues, spot-check advised"
     else:
         label = f"Confidence: {pct}% ⚠ Manual review recommended"
 
@@ -171,7 +171,7 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
 
             if cells is not None:
                 if _cells_are_clean(cells):
-                    # Fast path: cells are well-structured — skip LLM entirely
+                    # Fast path: cells are well-structured - skip LLM entirely
                     for cell_row in cells:
                         cell_row[2] = redact_pii(cell_row[2])  # redact details
                     raw_transactions = [
@@ -183,7 +183,7 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
                     ]
                     method = "table"
                 else:
-                    # Cells are messy — let LLM normalise them
+                    # Cells are messy - let LLM normalise them
                     raw_transactions = await parse_table_cells(cells)
                     method = "table"
             else:
@@ -225,7 +225,7 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
             if normalized:
                 t.payment_type = normalized
             elif not t.payment_type:
-                # No payment type column — infer from details text
+                # No payment type column - infer from details text
                 t.payment_type = infer_payment_type(t.details)
 
         # Stage 2: batch LLM fallback for anything still unclassified
@@ -286,7 +286,7 @@ async def process_pdfs(
     combine: bool,
     is_scanned: bool = False,
 ):
-    """Async generator — yields (csv_paths, status, zip_path_or_None, preview_rows)
+    """Async generator - yields (csv_paths, status, zip_path_or_None, preview_rows)
     after each file so the Gradio UI updates in real time.
     Final yield carries complete results including ZIP path (if 2+ files).
     """
@@ -312,7 +312,7 @@ async def process_pdfs(
             transactions, status = await _process_single(pdf_path, is_scanned=is_scanned)
             elapsed = round(time.time() - t0, 1)
 
-            status_lines.append(f"[{i + 1}/{n}] {stem}.pdf — {status}")
+            status_lines.append(f"[{i + 1}/{n}] {stem}.pdf - {status}")
             all_transactions.extend(transactions)
             _log({"file": f"{stem}.pdf", "rows": len(transactions), "elapsed_s": elapsed})
 
@@ -324,7 +324,7 @@ async def process_pdfs(
         except asyncio.CancelledError:
             raise  # don't swallow cancellation
         except Exception as exc:
-            status_lines.append(f"[{i + 1}/{n}] {stem}.pdf — ERROR: {exc}")
+            status_lines.append(f"[{i + 1}/{n}] {stem}.pdf - ERROR: {exc}")
             _log({"file": f"{stem}.pdf", "error": str(exc)})
 
         # Yield updated state after each file completes (or errors)
