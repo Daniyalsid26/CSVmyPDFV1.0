@@ -33,22 +33,13 @@ class Transaction(BaseModel):
 
 # ─── Date Normalisation ──────────────────────────────────────────────────────
 
-def normalize_date(raw: Optional[str]) -> Optional[str]:
-    """Parse any date string and reformat to YYYY-MM-DD for Excel compatibility."""
+def normalize_date(raw: Optional[str], dayfirst: bool = True) -> Optional[str]:
+    """Parse any date string and reformat to YYYY-MM-DD for Excel compatibility. Uses provided dayfirst flag."""
     if not raw or not raw.strip():
         return raw
     text = raw.strip()
     if re.match(r'^\d{4}-\d{2}-\d{2}$', text):
         return text  # already correct
-    # Auto-detect dayfirst (UK) vs month-first (US) for numeric dates
-    dayfirst = True
-    m = re.match(r'^(\d{1,2})[/\-\.](\d{1,2})[/\-\.]', text)
-    if m:
-        first, second = int(m.group(1)), int(m.group(2))
-        if first > 12:
-            dayfirst = True
-        elif second > 12:
-            dayfirst = False
     try:
         dt = _dateutil_parser.parse(text, dayfirst=dayfirst)
         return dt.strftime('%Y-%m-%d')
@@ -100,10 +91,10 @@ def normalize_amount(raw: Optional[str]) -> Optional[float]:
         return None
 
 
-def normalize_raw(raw: RawTransaction) -> Transaction:
-    """Convert a RawTransaction to a Transaction with parsed float amounts."""
+def normalize_raw(raw: RawTransaction, dayfirst: bool = True) -> Transaction:
+    """Convert a RawTransaction to a Transaction with parsed float amounts. Passes dayfirst to normalize_date."""
     return Transaction(
-        date=normalize_date(raw.date),
+        date=normalize_date(raw.date, dayfirst=dayfirst),
         payment_type=raw.payment_type,
         details=raw.details,
         paid_out=normalize_amount(raw.paid_out),
