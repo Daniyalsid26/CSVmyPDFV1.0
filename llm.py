@@ -1,4 +1,7 @@
-"""llm.py — Groq LLM client, system prompt, and transaction extraction."""
+"""
+llm.py — Groq LLM client, system prompt, and transaction extraction helpers.
+Handles LLM calls for parsing statements and normalising table cells.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -45,7 +48,10 @@ _TABLE_CELL_PROMPT = (
 
 
 async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
-    """Send text to Groq and return a list of RawTransactions."""
+    """
+    Send raw statement text to Groq LLM and return list of RawTransactions.
+    Truncates input if >90k chars. Uses system prompt for extraction.
+    """
     if len(raw_text) > 90_000:
         raw_text = raw_text[:90_000]
 

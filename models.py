@@ -12,7 +12,7 @@ from pydantic import BaseModel
 # ─── Data Models ──────────────────────────────────────────────────────────────
 
 class RawTransaction(BaseModel):
-    """Transaction as extracted — amounts kept as raw strings."""
+    """Transaction as extracted from PDF — all fields as raw strings."""
     date: Optional[str] = None
     payment_type: Optional[str] = None
     details: Optional[str] = None
@@ -22,7 +22,7 @@ class RawTransaction(BaseModel):
 
 
 class Transaction(BaseModel):
-    """Normalised transaction with deterministically parsed float amounts."""
+    """Transaction with normalised date and float amounts."""
     date: Optional[str] = None
     payment_type: Optional[str] = None
     details: Optional[str] = None
@@ -34,7 +34,7 @@ class Transaction(BaseModel):
 # ─── Date Normalisation ──────────────────────────────────────────────────────
 
 def normalize_date(raw: Optional[str], dayfirst: bool = True) -> Optional[str]:
-    """Parse any date string and reformat to YYYY-MM-DD for Excel compatibility. Uses provided dayfirst flag."""
+    """Parse a date string and reformat to YYYY-MM-DD. Uses provided dayfirst flag."""
     if not raw or not raw.strip():
         return raw
     text = raw.strip()
@@ -50,10 +50,9 @@ def normalize_date(raw: Optional[str], dayfirst: bool = True) -> Optional[str]:
 # ─── Amount Normalisation ─────────────────────────────────────────────────────
 
 def normalize_amount(raw: Optional[str]) -> Optional[float]:
-    """Parse a currency string to float.
-
-    Handles: £/$, comma separators, CR/DR suffixes, parenthetical negatives,
-    trailing/leading minus, European decimal format (1.234,56).
+    """
+    Parse a currency string to float.
+    Handles: £/$, commas, CR/DR, negatives, European decimals.
     """
     if not raw:
         return None
@@ -92,7 +91,7 @@ def normalize_amount(raw: Optional[str]) -> Optional[float]:
 
 
 def normalize_raw(raw: RawTransaction, dayfirst: bool = True) -> Transaction:
-    """Convert a RawTransaction to a Transaction with parsed float amounts. Passes dayfirst to normalize_date."""
+    """Convert a RawTransaction to a Transaction, normalising date and amounts."""
     return Transaction(
         date=normalize_date(raw.date, dayfirst=dayfirst),
         payment_type=raw.payment_type,

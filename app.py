@@ -72,6 +72,79 @@ footer { visibility: hidden; }
     margin-top: 6px !important;
 }
 """
+_CSS = """
+footer { visibility: hidden; }
+
+.gradio-container {
+    max-width: 780px !important;
+    margin: 0 auto !important;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+}
+
+#title { text-align: center; padding-top: 24px; }
+#title h1 {
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+    margin-bottom: 4px !important;
+}
+#tagline p {
+    text-align: center;
+    color: #6b7280;
+    font-size: 0.92rem !important;
+    margin-top: 0 !important;
+    margin-bottom: 28px !important;
+}
+
+#convert-btn {
+    width: 100% !important;
+    border-radius: 8px !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    margin-top: 8px !important;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+}
+
+/* Status log — force dark readable text regardless of theme */
+#status textarea {
+    font-family: 'ui-monospace', 'Menlo', monospace !important;
+    font-size: 0.78rem !important;
+    background: #f8fafc !important;
+    color: #111827 !important;
+    border-radius: 6px !important;
+    resize: none !important;
+    padding: 8px 10px !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+/* Preview table — light grey bg, white text for readability */
+#preview-table table {
+    font-size: 0.8rem !important;
+    background: #23272e !important;
+    color: #fff !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+}
+#preview-table thead th {
+    background: #3a3f47 !important;
+    font-weight: 600 !important;
+    color: #fff !important;
+}
+#preview-table tbody td { color: #fff !important; }
+#preview-table * { color: #fff !important; }
+
+/* Download buttons — full-width, left-aligned label */
+.dl-btn button {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    font-weight: 500 !important;
+}
+.zip-btn button {
+    width: 100% !important;
+    justify-content: center !important;
+    font-weight: 700 !important;
+    margin-top: 6px !important;
+}
+"""
 
 with gr.Blocks(
     theme=gr.themes.Soft(primary_hue="slate"),
@@ -107,7 +180,7 @@ with gr.Blocks(
     # ── Step 2 — Convert ─────────────────────────────────────────────────────
     with gr.Column(variant="panel"):
         gr.Markdown("**Step 2 — Convert**")
-        convert_btn = gr.Button(
+            convert_btn = gr.Button("Convert to CSV", variant="primary", elem_id="convert-btn")
             "⚡ Convert to CSV",
             variant="primary",
             elem_id="convert-btn",

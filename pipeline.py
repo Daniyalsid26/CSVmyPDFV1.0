@@ -1,4 +1,7 @@
-"""pipeline.py — Main pipeline orchestrator."""
+"""
+pipeline.py — Main pipeline orchestrator for PDF-to-CSV extraction.
+Handles routing, normalisation, and CSV writing.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +21,7 @@ from models import RawTransaction, Transaction, drop_empty_rows, infer_payment_t
 
 
 # ─── Fast deterministic path (no LLM) ───────────────────────────────────────
+# Checks if table extraction is clean enough to skip LLM
 
 _DATE_LIKE = re.compile(
     r"""\b(
@@ -32,9 +36,7 @@ _AMOUNT_LIKE = re.compile(r"[\d,]+\.\d{2}")
 
 
 def _cells_are_clean(cells: list[list[str]]) -> bool:
-    """Return True if >=80% of rows have a date-like col[0] and at least one
-    amount-like value in col[3], col[4], or col[5].  When True we can skip
-    the LLM and normalise directly in Python."""
+    """Check if >=80% of rows have a date and at least one amount column."
     if not cells:
         return False
     passing = sum(
@@ -52,6 +54,7 @@ _HEADERS = ["date", "payment_type", "details", "paid_out", "paid_in", "balance"]
 
 
 def write_csv(transactions: list[Transaction], out_path: str) -> None:
+    """Write normalised transactions to a CSV file."""
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(_HEADERS)
@@ -72,14 +75,13 @@ _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 def _confidence_score(transactions: list[Transaction], method: str) -> tuple[float, str]:
-    """Return (score 0.0-1.0, human-readable label).
-
-    Scoring breakdown (all-or-nothing per signal):
-      +0.4  table parser succeeded (no LLM needed)
-      +0.2  >=90% of dates normalised to YYYY-MM-DD
-      +0.2  >=90% of rows have at least one amount (paid_out or paid_in)
-      +0.2  balance column reconciles for >80% of consecutive row pairs
-    """
+        """
+        Compute a confidence score for the extraction.
+        +0.4: table parser succeeded (no LLM)
+        +0.2: >=90% dates normalised
+        +0.2: >=90% rows have amount
+        +0.2: balance reconciles for >80% of rows
+        """
     if not transactions:
         return 0.0, "⚠ No data"
 

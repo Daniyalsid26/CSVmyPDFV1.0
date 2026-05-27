@@ -24,6 +24,7 @@ _PII_PATTERNS = [
 
 
 def redact_pii(text: str) -> str:
+    """Redact common PII patterns (card, IBAN, sort code, account) from text."""
     for pattern, replacement in _PII_PATTERNS:
         text = pattern.sub(replacement, text)
     return text
@@ -35,11 +36,10 @@ _PAGE_SEP = "\n\n--- PAGE {n} ---\n\n"
 
 
 def extract_text(pdf_path: str, force_ocr: bool = False) -> str:
-    """Extract text via pdfplumber with page-separator markers.
-
-    If force_ocr=True, skip pdfplumber entirely and OCR every page directly.
-    Otherwise routing is document-level: if total pdfplumber text is below
-    200 chars the whole document is re-extracted via OCR.
+    """
+    Extract text from PDF using pdfplumber, fallback to OCR if needed.
+    If force_ocr=True, OCR every page. If extracted text <200 chars, OCR whole doc.
+    Returns text with page separators.
     """
     per_page: list[str] = []
 
@@ -74,14 +74,10 @@ def extract_text(pdf_path: str, force_ocr: bool = False) -> str:
 # ─── Coordinate-Based OCR Row Extractor (for scanned PDFs) ───────────────────
 
 def ocr_extract_rows(pdf_path: str) -> Optional[list[list[str]]]:
-    """Extract rows from a scanned PDF using coordinate-aware OCR.
-
-    Uses pytesseract.image_to_data (no pandas required) to get per-word
-    positions, then groups words into rows by y-position and assigns them
-    to columns by x-position percentage of page width.
-
-    Returns [[date, code, details, paid_out, paid_in, balance], ...] or
-    None if the extraction looks empty / unreliable.
+    """
+    Extract table rows from a scanned PDF using OCR and word positions.
+    Groups words by y-position, assigns columns by x-position.
+    Returns list of rows, or None if fails.
     """
     rows: list[list[str]] = []
 
