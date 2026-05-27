@@ -88,8 +88,7 @@ def _extract_payment_type_from_details(details: Optional[str]) -> tuple[Optional
         return None, details
 
     payment_type = match.group(1).strip().lower()
-    cleaned_details = details[match.end():].lstrip()
-    return payment_type, cleaned_details or details
+    return payment_type, details
 
 
 def _confidence_score(transactions: list[Transaction], method: str) -> tuple[float, str]:
