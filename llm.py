@@ -69,7 +69,11 @@ async def parse_statement_llm(raw_text: str) -> list[RawTransaction]:
             timeout=120.0,
         )
 
-    data = json.loads(response.choices[0].message.content)
+    try:
+        data = json.loads(response.choices[0].message.content)
+    except json.JSONDecodeError as exc:
+        _logger.warning("Invalid JSON from LLM in parse_statement_llm: %s", exc)
+        return []
     raw_list = data.get("transactions", [])
 
     result: list[RawTransaction] = []
@@ -112,7 +116,11 @@ async def parse_table_cells(cells: list[list[str]]) -> list[RawTransaction]:
             timeout=120.0,
         )
 
-    data = json.loads(response.choices[0].message.content)
+    try:
+        data = json.loads(response.choices[0].message.content)
+    except json.JSONDecodeError as exc:
+        _logger.warning("Invalid JSON from LLM in parse_table_cells: %s", exc)
+        return []
     raw_list = data.get("transactions", [])
 
     result: list[RawTransaction] = []

@@ -1,10 +1,15 @@
 """app.py — Gradio UI."""
+import logging
 import os
 from typing import Optional
 
 import gradio as gr
 
 from pipeline import process_pdfs
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+_logger = logging.getLogger("csvpdf.app")
 
 _MAX_DOWNLOADS = 5  # pre-created download buttons (covers up to 5 separate CSVs)
 _MAX_PDF_BYTES = 20 * 1024 * 1024  # 20 MB per file
@@ -17,19 +22,24 @@ def _validate_pdf_paths(pdf_paths) -> Optional[str]:
     for path in pdf_paths:
         name = os.path.basename(path)
         if not name.lower().endswith(".pdf"):
+            _logger.warning("Rejected upload %s: invalid file extension", name)
             return f"Invalid file type: {name}. Please upload .pdf files only."
         try:
             size = os.path.getsize(path)
         except OSError:
+            _logger.warning("Rejected upload %s: could not read file size", name)
             return f"Could not read file: {name}."
         if size > _MAX_PDF_BYTES:
+            _logger.warning("Rejected upload %s: file too large (%s bytes)", name, size)
             return f"File too large: {name}. Max size is 20 MB."
         try:
             with open(path, "rb") as f:
                 header = f.read(4)
         except OSError:
+            _logger.warning("Rejected upload %s: could not open file", name)
             return f"Could not open file: {name}."
         if header != b"%PDF":
+            _logger.warning("Rejected upload %s: invalid PDF magic bytes", name)
             return f"Invalid PDF content: {name}."
 
     return None

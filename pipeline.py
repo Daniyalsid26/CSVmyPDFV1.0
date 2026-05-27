@@ -145,6 +145,7 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
     """
     run_id = uuid.uuid4().hex[:8]
     tmp_pdf = f"/tmp/stmt_{run_id}.pdf"
+    file_name = os.path.basename(pdf_path)
 
     try:
         with open(pdf_path, "rb") as src, open(tmp_pdf, "wb") as dst:
@@ -246,6 +247,7 @@ async def _process_single(pdf_path: str, is_scanned: bool = False) -> tuple[list
         return transactions, f"{n} transaction{'s' if n != 1 else ''} ({method})  |  {conf_label}"
 
     except Exception as exc:
+        _logger.warning("Processing failed for %s via %s: %s", file_name, method, exc)
         return [], f"Error: {exc}"
 
     finally:
@@ -326,7 +328,7 @@ async def process_pdfs(
             raise  # don't swallow cancellation
         except Exception as exc:
             status_lines.append(f"[{i + 1}/{n}] {stem}.pdf - ERROR: {exc}")
-            _log({"file": f"{stem}.pdf", "error": str(exc)})
+            _log({"file": f"{stem}.pdf", "error": str(exc), "stage": "process_pdfs"})
 
         # Yield updated state after each file completes (or errors)
         yield csv_paths, "\n".join(status_lines), None, _build_preview(all_transactions)
